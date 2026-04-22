@@ -6,10 +6,11 @@ extern bool EnableSender = true;
 
 string IsoTimeUTC()
 {
-   datetime t = TimeGMT();
+   MqlDateTime dt;
+   TimeToStruct(TimeGMT(), dt);
    return StringFormat("%04d-%02d-%02dT%02d:%02d:%02dZ",
-      TimeYear(t), TimeMonth(t), TimeDay(t),
-      TimeHour(t), TimeMinute(t), TimeSecond(t));
+      dt.year, dt.mon, dt.day,
+      dt.hour, dt.min, dt.sec);
 }
 
 string CharArrayToStringSafe(char &arr[])
@@ -46,7 +47,7 @@ void SendSnapshot()
    double high = iHigh(symbol, PERIOD_M1, 0);
    double low = iLow(symbol, PERIOD_M1, 0);
    double close = iClose(symbol, PERIOD_M1, 0);
-   double volume = iVolume(symbol, PERIOD_M1, 0);
+   long volume = iVolume(symbol, PERIOD_M1, 0);
 
    string body = StringFormat(
       "{\"timestamp_utc\":\"%s\",\"snapshots\":[{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"bid\":%G,\"ask\":%G,\"spread_points\":%d,\"ohlc\":{\"open\":%G,\"high\":%G,\"low\":%G,\"close\":%G},\"volume\":%G}]}",
