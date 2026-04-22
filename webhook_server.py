@@ -28,6 +28,7 @@ NEWS_CACHE_FILE = os.getenv("NEWS_CACHE_FILE", os.path.join(BASE_DIR, "news_cach
 SNAPSHOT_STORE = os.getenv("MARKET_SNAPSHOT_STORE", os.path.join(BASE_DIR, "latest_market_snapshot.json"))
 GENERATED_SIGNAL_STORE = os.getenv("AI_GENERATED_SIGNAL_STORE", os.path.join(BASE_DIR, "generated_ai_signal.json"))
 AI_SIGNAL_STATE_FILE = os.getenv("AI_SIGNAL_STATE_FILE", os.path.join(BASE_DIR, "ai_signal_state.json"))
+RUNTIME_STATE_FILE = os.getenv("RUNTIME_STATE_FILE", os.path.join(BASE_DIR, "runtime_state.json"))
 AI4TRADE_TOKEN = os.getenv("AI4TRADE_TOKEN", "")
 AI4TRADE_AGENT_ID = os.getenv("AI4TRADE_AGENT_ID", "")
 AI4TRADE_REQUIRE_AGENT_MATCH = os.getenv("AI4TRADE_REQUIRE_AGENT_MATCH", "true").lower() in {"1", "true", "yes", "on"}
@@ -159,6 +160,7 @@ class SnapshotBatch(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _load_runtime_state()
     await refresh_news_cache()
     await refresh_ai4trade_signal_once()
     _run_startup_checks()
@@ -254,6 +256,31 @@ def _save_state(state: dict):
     _ensure_parent_dir(AI_SIGNAL_STATE_FILE)
     with open(AI_SIGNAL_STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
+
+
+def _save_runtime_state():
+    payload = {
+        "snapshot_state": SNAPSHOT_STATE,
+        "ai4trade_state": AI4TRADE_STATE,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _ensure_parent_dir(RUNTIME_STATE_FILE)
+    with open(RUNTIME_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _load_runtime_state():
+    if not os.path.exists(RUNTIME_STATE_FILE):
+        return
+    try:
+        with open(RUNTIME_STATE_FILE, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload.get("snapshot_state"), dict):
+            SNAPSHOT_STATE.update(payload["snapshot_state"])
+        if isinstance(payload.get("ai4trade_state"), dict):
+            AI4TRADE_STATE.update(payload["ai4trade_state"])
+    except Exception as e:
+        print(f"Error loading runtime state: {e}")
 
 
 def _store_signal_payload(payload: dict):
@@ -597,6 +624,7 @@ async def snapshot_worker_loop():
                     SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
                     SNAPSHOT_STATE["last_no_trade_reason"] = result.get("reason")
                     SNAPSHOT_STATE["last_no_trade_symbol"] = snap.get("symbol")
+                    _save_runtime_state()
                     _append_journal({
                         "event_id": str(uuid.uuid4()),
                         "type": "snapshot_rejected",
@@ -626,6 +654,7 @@ async def snapshot_worker_loop():
                         "reason": reject_reason,
                         "decision_source": result.get("decision_source", "unknown"),
                     })
+                    _save_runtime_state()
                     continue
                 signal = _build_signal(normalized_symbol, result["decision"], result["entry"], result["timeframe"], result["confidence"], result["reason"], snap)
                 _store_generated_signal(signal)
@@ -633,6 +662,7 @@ async def snapshot_worker_loop():
                 state.setdefault("last_keys", {})[normalized_symbol] = key
                 _save_state(state)
                 SNAPSHOT_STATE["last_signal_id"] = signal["signal_id"]
+                _save_runtime_state()
                 _append_journal({
                     "event_id": str(uuid.uuid4()),
                     "type": "signal_generated_from_snapshot",
@@ -995,6 +1025,7 @@ async def receive_snapshot(batch: SnapshotBatch, authorization: Optional[str] = 
     SNAPSHOT_STATE["last_received_at"] = payload["received_at"]
     await SNAPSHOT_QUEUE.put(payload)
     SNAPSHOT_STATE["queue_size"] = SNAPSHOT_QUEUE.qsize()
+    _save_runtime_state()
     return {"ok": True, "stored": len(filtered), "queued": len(filtered), "symbols": [x["symbol"] for x in filtered]}
 
 
@@ -1184,4 +1215,5 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
                     SNAPSHOT_STATE["last_loss_side"] = None
                     SNAPSHOT_STATE["last_loss_at"] = None
             _store_signal_payload(current_signal)
+    _save_runtime_state()
     return {"ok": True}
