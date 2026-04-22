@@ -17,6 +17,13 @@ XAU_MAX_SPREAD = int(os.getenv("XAU_MAX_SPREAD_POINTS", "120"))
 FOREX_MAX_SPREAD = int(os.getenv("FOREX_MAX_SPREAD_POINTS", "35"))
 MIN_CONFIDENCE = float(os.getenv("GEMINI_MIN_CONFIDENCE", "0.55"))
 GEMINI_DEBUG = os.getenv("GEMINI_DEBUG", "true").lower() in {"1", "true", "yes", "on"}
+SESSION_FILTER_ENABLED = os.getenv("SESSION_FILTER_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+SESSION_START_HOUR_UTC = int(os.getenv("SESSION_START_HOUR_UTC", "6"))
+SESSION_END_HOUR_UTC = int(os.getenv("SESSION_END_HOUR_UTC", "21"))
+XAU_MIN_CANDLE_RANGE = float(os.getenv("XAU_MIN_CANDLE_RANGE", "0.8"))
+XAU_MAX_CANDLE_RANGE = float(os.getenv("XAU_MAX_CANDLE_RANGE", "8.0"))
+FOREX_MIN_CANDLE_RANGE = float(os.getenv("FOREX_MIN_CANDLE_RANGE", "0.0005"))
+FOREX_MAX_CANDLE_RANGE = float(os.getenv("FOREX_MAX_CANDLE_RANGE", "0.0080"))
 
 
 def normalize_symbol(symbol: str) -> str:
@@ -57,6 +64,40 @@ def _candle_direction(candle: dict):
     return "FLAT"
 
 
+def _session_gate(snapshot: dict):
+    if not SESSION_FILTER_ENABLED:
+        return {"pass": True, "reason": "session_filter_disabled"}
+    ts = snapshot.get("timestamp_utc")
+    if not ts:
+        return {"pass": True, "reason": "session_timestamp_missing"}
+    try:
+        dt = __import__("datetime").datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        hour = dt.hour
+    except Exception:
+        return {"pass": True, "reason": "session_timestamp_invalid"}
+    if SESSION_START_HOUR_UTC <= hour < SESSION_END_HOUR_UTC:
+        return {"pass": True, "reason": f"session_ok:{hour}"}
+    return {"pass": False, "reason": f"outside_session:{hour}"}
+
+
+def _volatility_gate(snapshot: dict):
+    symbol = normalize_symbol(snapshot["symbol"])
+    high = float(snapshot["ohlc"]["high"])
+    low = float(snapshot["ohlc"]["low"])
+    candle_range = max(high - low, 0.0)
+    if symbol == "XAUUSD":
+        min_range = XAU_MIN_CANDLE_RANGE
+        max_range = XAU_MAX_CANDLE_RANGE
+    else:
+        min_range = FOREX_MIN_CANDLE_RANGE
+        max_range = FOREX_MAX_CANDLE_RANGE
+    if candle_range < min_range:
+        return {"pass": False, "reason": f"range_too_small:{candle_range:.5f}<{min_range}"}
+    if candle_range > max_range:
+        return {"pass": False, "reason": f"range_too_large:{candle_range:.5f}>{max_range}"}
+    return {"pass": True, "reason": f"range_ok:{candle_range:.5f}"}
+
+
 def _recent_structure_gate(snapshot: dict):
     candles = _extract_recent_candles(snapshot)
     if len(candles) < 3:
@@ -92,6 +133,14 @@ def prefilter(snapshot: dict):
     if spread > get_max_spread(symbol):
         return {"pass": False, "reason": f"spread_too_high:{spread}>{get_max_spread(symbol)}"}
 
+    session = _session_gate(snapshot)
+    if not session["pass"]:
+        return {"pass": False, "reason": session["reason"]}
+
+    volatility = _volatility_gate(snapshot)
+    if not volatility["pass"]:
+        return {"pass": False, "reason": volatility["reason"]}
+
     if close > open_:
         bias = "BUY"
     elif close < open_:
@@ -110,9 +159,11 @@ def prefilter(snapshot: dict):
         "pass": True,
         "bias": bias,
         "entry": entry,
-        "reason": f"basic_candle_bias|{structure['reason']}",
+        "reason": f"basic_candle_bias|{session['reason']}|{volatility['reason']}|{structure['reason']}",
         "recent_structure": structure['reason'],
         "recent_candles_used": len(_extract_recent_candles(snapshot)),
+        "session_reason": session['reason'],
+        "volatility_reason": volatility['reason'],
     }
 
 
