@@ -1,0 +1,26 @@
+{
+  "symbol": "XAUUSD",
+  "side": "BUY",
+  "timeframe": "M15",
+  "entry_zone": {
+    "min": 3348.2,
+    "max": 3349.0
+  },
+  "stop_loss": 3344.8,
+  "take_profit": [
+    {
+      "label": "TP1",
+      "price": 3352.5,
+      "close_pct": 0.5
+    },
+    {
+      "label": "TP2",
+      "price": 3356.8,
+      "close_pct": 0.5
+    }
+  ],
+  "confidence": 0.74,
+  "invalidation": "Close M15 below 3345.00",
+  "quantity": 0.01,
+  "timestamp_utc": "2026-04-22T11:10:00Z"
+}

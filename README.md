@@ -118,7 +118,30 @@ Endpoint debug tambahan:
 - `GET /ai4trade/raw`
 - `GET /ai4trade/dry-run`
 
-## 7. File tambahan production
+## 7. Publish signal ke ai4trade.ai
+
+Sekarang tersedia script publisher untuk agent kamu:
+- `publish_signal.py`
+- `publish_signal_example.json`
+
+Contoh publish:
+```bash
+python publish_signal.py publish_signal_example.json
+```
+
+Script ini akan:
+- baca file JSON signal lokal
+- ubah ke schema `POST /api/signals/realtime`
+- publish memakai `AI4TRADE_TOKEN`
+
+Env yang dipakai publisher:
+```env
+AI4TRADE_PUBLISH_URL=https://ai4trade.ai/api/signals/realtime
+AI4TRADE_PUBLISH_MARKET=forex
+AI4TRADE_PUBLISH_QUANTITY=0.01
+```
+
+## 8. File tambahan production
 
 - `requirements.txt` untuk install dependency cepat
 - `start_bridge.bat` untuk start bridge di Windows RDP
@@ -127,7 +150,7 @@ Endpoint debug tambahan:
 - endpoint `/health/ready` untuk cek readiness bridge
 - `ai4trade_adapter.md` untuk catatan integrasi ai4trade
 
-## 8. News filter gratis
+## 9. News filter gratis
 
 Bridge akan mengambil kalender news gratis dari Forex Factory JSON feed:
 - `https://nfs.faireconomy.media/ff_calendar_thisweek.json`
