@@ -58,7 +58,9 @@ void SendSnapshot()
    char data[];
    char result[];
    string resultHeaders;
-   StringToCharArray(body, data);
+   int dataLen = StringToCharArray(body, data, 0, StringLen(body));
+   if(dataLen > 0)
+      ArrayResize(data, dataLen - 1);
    int code = WebRequest("POST", ReceiverUrl, headers, 5000, data, result, resultHeaders);
    if(code == -1)
    {
