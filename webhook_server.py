@@ -80,6 +80,9 @@ SNAPSHOT_STATE = {
     "last_decision": None,
     "last_reason": None,
     "last_decision_source": None,
+    "last_deterministic_score": None,
+    "last_fusion_score": None,
+    "last_gemini_evaluation": None,
     "last_no_trade_at": None,
     "last_no_trade_reason": None,
     "last_no_trade_symbol": None,
@@ -647,6 +650,9 @@ async def snapshot_worker_loop():
                 SNAPSHOT_STATE["last_decision"] = result.get("decision")
                 SNAPSHOT_STATE["last_reason"] = result.get("reason")
                 SNAPSHOT_STATE["last_decision_source"] = result.get("decision_source", "unknown")
+                SNAPSHOT_STATE["last_deterministic_score"] = result.get("deterministic_score")
+                SNAPSHOT_STATE["last_fusion_score"] = result.get("fusion_score")
+                SNAPSHOT_STATE["last_gemini_evaluation"] = result.get("evaluation")
                 SNAPSHOT_STATE["last_snapshot_timeframe"] = snap.get("timeframe")
                 if result.get("decision") not in {"BUY", "SELL"}:
                     SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
@@ -661,6 +667,9 @@ async def snapshot_worker_loop():
                         "timeframe": snap.get("timeframe"),
                         "reason": result.get("reason"),
                         "decision_source": result.get("decision_source", "unknown"),
+                        "deterministic_score": result.get("deterministic_score"),
+                        "fusion_score": result.get("fusion_score"),
+                        "evaluation": result.get("evaluation"),
                     })
                     continue
                 normalized_symbol = result.get("symbol", snap["symbol"])
@@ -701,6 +710,9 @@ async def snapshot_worker_loop():
                     "confidence": signal["confidence"],
                     "reason": signal["invalidation"],
                     "decision_source": result.get("decision_source", "unknown"),
+                    "deterministic_score": result.get("deterministic_score"),
+                    "fusion_score": result.get("fusion_score"),
+                    "evaluation": result.get("evaluation"),
                 })
                 if AI_SIGNAL_PUBLISH_ENABLED:
                     await _publish_signal_to_ai4trade(signal)
@@ -837,6 +849,9 @@ def _strategy_summary():
         "last_decision": SNAPSHOT_STATE.get("last_decision"),
         "last_reason": SNAPSHOT_STATE.get("last_reason"),
         "last_decision_source": SNAPSHOT_STATE.get("last_decision_source"),
+        "last_deterministic_score": SNAPSHOT_STATE.get("last_deterministic_score"),
+        "last_fusion_score": SNAPSHOT_STATE.get("last_fusion_score"),
+        "last_gemini_evaluation": SNAPSHOT_STATE.get("last_gemini_evaluation"),
         "last_snapshot_timeframe": SNAPSHOT_STATE.get("last_snapshot_timeframe"),
     }
 

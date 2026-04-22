@@ -432,6 +432,7 @@ def decide_trade(snapshot: dict):
         gemini_result["fusion_score"] = fusion_score
 
         if gemini_result.get("decision") == fallback.get("decision"):
+            gemini_result["deterministic_score"] = deterministic_score
             gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), fusion_score)
             if fusion_score < DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD:
                 _debug(f"Hybrid fusion downgraded to NO_TRADE score={fusion_score}")
@@ -444,19 +445,25 @@ def decide_trade(snapshot: dict):
                     "timeframe": gemini_result.get("timeframe"),
                     "decision_source": "fusion",
                     "evaluation": evaluation,
+                    "deterministic_score": deterministic_score,
                     "fusion_score": fusion_score,
                 }
             _debug(f"Hybrid decision aligned with fallback decision={gemini_result.get('decision')}")
             return gemini_result
         if gemini_result.get("decision") == "NO_TRADE":
+            gemini_result["deterministic_score"] = deterministic_score
+            gemini_result["fusion_score"] = fusion_score
             _debug("Hybrid decision downgraded to NO_TRADE by Gemini")
             return gemini_result
         if fusion_score >= GEMINI_OVERRIDE_CONFIDENCE and float(gemini_result.get("confidence", 0.0)) >= MIN_CONFIDENCE:
             gemini_result["reason"] = f"gemini_override|{gemini_result.get('reason')}"
             gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), fusion_score)
+            gemini_result["deterministic_score"] = deterministic_score
+            gemini_result["fusion_score"] = fusion_score
             _debug(f"Hybrid override accepted decision={gemini_result.get('decision')} confidence={gemini_result.get('confidence')}")
             return gemini_result
         _debug("Hybrid override rejected, fallback kept")
 
     _debug(f"Fallback decision used decision={fallback.get('decision')} reason={fallback.get('reason')}")
+    fallback["deterministic_score"] = deterministic_score
     return fallback
