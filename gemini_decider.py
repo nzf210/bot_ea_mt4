@@ -260,8 +260,10 @@ def _gemini_prompt(snapshot: dict, pf: dict) -> str:
     return (
         "You are a trading decision assistant for short-term MT4 execution on GOLD/forex. "
         "You must be conservative. Deterministic prefilter has already passed, so your job is to confirm or downgrade setup quality, not invent reckless trades. "
-        "Return ONLY valid JSON with keys: decision, confidence, reason, entry, symbol, timeframe. "
+        "Return ONLY valid JSON with keys: decision, confidence, reason, entry, symbol, timeframe, evaluation. "
         "decision must be one of BUY, SELL, NO_TRADE. confidence must be 0..1. entry must be numeric. "
+        "evaluation must be an object with optional numeric keys trend_alignment, entry_quality, exhaustion_risk, noise_risk, each in 0..1. "
+        "Higher trend_alignment and entry_quality are better. Higher exhaustion_risk and noise_risk are worse. "
         "Prefer NO_TRADE when the setup is weak, stretched, noisy, late, or unclear. "
         "Use recent_candles, volatility, spread, and prefilter reasoning. Avoid contrarian overrides unless confidence is very high and reason is explicit. "
         f"Snapshot: {json.dumps(payload, ensure_ascii=False)}"
@@ -343,6 +345,7 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
         if entry is not None:
             entry = float(entry)
         reason = str(parsed.get("reason") or "gemini_decision")
+        evaluation = parsed.get("evaluation") if isinstance(parsed.get("evaluation"), dict) else {}
         if decision in {"BUY", "SELL"} and confidence < MIN_CONFIDENCE:
             _debug(f"Gemini low confidence decision={decision} confidence={confidence}")
             return {
@@ -356,7 +359,7 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
         GEMINI_RUNTIME_STATE["last_error"] = None
         GEMINI_RUNTIME_STATE["last_decision_source"] = "gemini"
         _debug(f"Gemini decision used decision={decision} confidence={confidence} reason={reason}")
-        return {
+        result_payload = {
             "decision": decision,
             "confidence": confidence,
             "reason": reason,
@@ -365,6 +368,13 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
             "timeframe": timeframe,
             "decision_source": "gemini",
         }
+        if evaluation:
+            result_payload["evaluation"] = {
+                key: max(0.0, min(float(value), 1.0))
+                for key, value in evaluation.items()
+                if key in {"trend_alignment", "entry_quality", "exhaustion_risk", "noise_risk"}
+            }
+        return result_payload
     except Exception as e:
         GEMINI_RUNTIME_STATE["last_error"] = str(e)
         GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
@@ -392,6 +402,12 @@ def decide_trade(snapshot: dict):
             gemini_result["entry"] = pf["entry"]
         if gemini_result.get("decision") == fallback.get("decision"):
             gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), float(fallback.get("confidence", 0.0)))
+            evaluation = gemini_result.get("evaluation") if isinstance(gemini_result.get("evaluation"), dict) else {}
+            if evaluation:
+                entry_quality = float(evaluation.get("entry_quality", 0.5))
+                exhaustion_risk = float(evaluation.get("exhaustion_risk", 0.5))
+                noise_risk = float(evaluation.get("noise_risk", 0.5))
+                gemini_result["confidence"] = max(0.0, min(0.95, gemini_result["confidence"] + (entry_quality * 0.06) - (exhaustion_risk * 0.05) - (noise_risk * 0.04)))
             _debug(f"Hybrid decision aligned with fallback decision={gemini_result.get('decision')}")
             return gemini_result
         if gemini_result.get("decision") == "NO_TRADE":
