@@ -10,13 +10,30 @@ Paket ini berisi:
 
 ### Install dependency
 ```bash
-pip install fastapi uvicorn pydantic
+pip install fastapi uvicorn pydantic httpx python-dotenv
+```
+
+### Setup .env
+```bash
+cd xau_mt4_bridge
+cp .env.example .env
+```
+
+Untuk production, kamu juga bisa mulai dari:
+```bash
+cp .env.production.example .env
+```
+
+Lalu edit `.env`:
+```env
+BRIDGE_API_TOKEN=ganti-token-aman
+NEWS_REFRESH_SEC=3600
+DEFAULT_NEWS_BLOCK_MINUTES=30
 ```
 
 ### Run server
 ```bash
 cd xau_mt4_bridge
-export BRIDGE_API_TOKEN="ganti-token-aman"
 uvicorn webhook_server:app --host 0.0.0.0 --port 8000
 ```
 
@@ -43,7 +60,8 @@ curl "http://127.0.0.1:8000/signal/latest" \
 3. Attach EA ke chart `XAUUSD`
 4. Isi input:
    - `BridgeBaseUrl` = `http://IP_SERVER:8000`
-   - `BridgeToken` = token yang sama
+   - `BridgeToken` = token yang sama dari file `.env`
+   - pastikan token di EA sama persis dengan `BRIDGE_API_TOKEN`
 5. Tambahkan URL ke MT4:
    - `Tools > Options > Expert Advisors > Allow WebRequest for listed URL`
    - tambahkan `http://IP_SERVER:8000`
@@ -57,18 +75,61 @@ curl "http://127.0.0.1:8000/signal/latest" \
 ## 5. Guard bawaan
 
 - hanya untuk `XAUUSD`
-- maksimal 1 posisi aktif
+- maksimal 1 posisi aktif per symbol + magic number
 - filter spread
 - risk-based lot sizing
 - max daily loss guard
+- auto news filter untuk berita High Impact USD
 
-## 6. Catatan penting
+## 6. File tambahan production
 
-- Parser JSON di MQL4 ini versi ringan, cocok untuk schema sederhana ini
-- Untuk production, sebaiknya tambahkan:
-  - validasi news filter nyata
-  - partial TP management
-  - trailing stop
-  - execution report balik ke webhook
-  - VPS/local bridge yang aman via private network
-# bot_ea_mt4
+- `requirements.txt` untuk install dependency cepat
+- `start_bridge.bat` untuk start bridge di Windows RDP
+- `.env.production.example` sebagai template setting production
+- startup precheck untuk validasi token sebelum server jalan
+- endpoint `/health/ready` untuk cek readiness bridge
+
+## 7. News filter gratis
+
+Bridge akan mengambil kalender news gratis dari Forex Factory JSON feed:
+- `https://nfs.faireconomy.media/ff_calendar_thisweek.json`
+
+Perilaku default:
+- refresh cache news setiap 1 jam
+- block trading 30 menit sebelum/sesudah berita High Impact USD
+- endpoint `/signal/latest` akan mengembalikan `news_blocked: true` dan mengubah status signal menjadi `BLOCKED_BY_NEWS`
+
+Pengaturan memakai file `.env`.
+Contoh tersedia di `.env.example`.
+
+### Security Note
+For production on Windows RDP:
+1. **Always** set `BRIDGE_API_TOKEN` to a strong random string, minimal 16 karakter.
+2. In MT4 EA Inputs, match this token exactly.
+3. If the server is on a public IP, use a firewall to allow only your RDP IP.
+4. `start_bridge.bat` akan menolak start jika token masih default atau terlalu pendek.
+
+### Windows RDP Deployment
+1. Install [Python 3.10+](https://www.python.org/downloads/windows/) on the RDP if running the server there.
+2. Install dependency:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+3. Buka folder project, copy `.env.production.example` menjadi `.env`.
+4. Edit `.env` dan isi minimal:
+   ```env
+   BRIDGE_API_TOKEN=your-secure-token
+   DEFAULT_NEWS_BLOCK_MINUTES=45
+   NEWS_REFRESH_SEC=1800
+   ```
+5. Jalankan bridge dengan:
+   ```powershell
+   start_bridge.bat
+   ```
+6. Follow the MT4 setup in step 3 above.
+7. Di MT4, pastikan `Allow WebRequest` mencakup base URL bridge.
+8. Untuk cek news filter manual:
+   - `GET /news/status`
+9. Untuk cek readiness bridge:
+   - `GET /health/ready`
+   - butuh Bearer token

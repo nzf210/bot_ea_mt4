@@ -29,7 +29,9 @@ void OnTick()
    if(Symbol() != "XAUUSD") return;
    if(TimeCurrent() < CooldownUntil) return;
    if(IsDailyLossLimitHit()) return;
-   if(OrdersTotal() > 0) return;
+   
+   // Check only for orders with our MagicNumber and Symbol
+   if(CountCurrentOrders() > 0) return;
 
    string json = HttpGetLatestSignal();
    if(StringLen(json) < 20) return;
@@ -67,11 +69,38 @@ void OnTick()
       lastSignalId = signalId;
       lastProcessedAt = TimeCurrent();
       Print("Trade opened for signal: ", signalId);
+      SendExecutionReport(signalId, ticket, "OPEN", lot, price);
    }
    else
    {
       Print("OrderSend failed: ", GetLastError());
    }
+}
+
+int CountCurrentOrders()
+{
+   int count = 0;
+   for(int i = OrdersTotal()-1; i >= 0; i--)
+   {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+      {
+         if(OrderMagicNumber() == MagicNumber && OrderSymbol() == Symbol())
+            count++;
+      }
+   }
+   return count;
+}
+
+void SendExecutionReport(string signalId, int ticket, string type, double lot, double price)
+{
+   string url = BridgeBaseUrl + "/execution/report";
+   string headers = "Authorization: Bearer " + BridgeToken + "\r\nContent-Type: application/json\r\n";
+   string body = StringFormat("{\"signal_id\":\"%s\",\"ticket\":%d,\"type\":\"%s\",\"lot\":%G,\"price\":%G}", signalId, ticket, type, lot, price);
+   char data[];
+   char result[];
+   string resultHeaders;
+   StringToCharArray(body, data);
+   WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
 }
 
 bool IsDailyLossLimitHit()
@@ -123,6 +152,14 @@ string HttpGetLatestSignal()
 string FlattenSignalResponse(string response)
 {
    if(StringFind(response, '"signal":null') >= 0) return "";
+   if(StringFind(response, '"news_blocked":true') >= 0) {
+      Print("Trading blocked by news filter");
+      return "";
+   }
+   if(StringFind(response, '"status":"BLOCKED_BY_NEWS"') >= 0) {
+      Print("Signal blocked by news filter");
+      return "";
+   }
 
    string signalId = JsonGetNestedString(response, "signal", "signal_id");
    string symbol = JsonGetNestedString(response, "signal", "symbol");
@@ -131,7 +168,7 @@ string FlattenSignalResponse(string response)
    double maxAge = JsonGetNestedDouble(response, "signal", "max_signal_age_sec");
    double entryMin = JsonGetDoubleFromSection(response, '"entry_zone"', "min");
    double entryMax = JsonGetDoubleFromSection(response, '"entry_zone"', "max");
-   double tp1 = JsonGetDoubleFromSection(response, '"take_profit"', "price");
+   double tp1 = JsonGetDoubleFromArrayObject(response, '"take_profit"', "price");
 
    return StringFormat("{\"signal_id\":\"%s\",\"symbol\":\"%s\",\"side\":\"%s\",\"stop_loss\":%G,\"entry_zone_min\":%G,\"entry_zone_max\":%G,\"tp1_price\":%G,\"max_signal_age_sec\":%G}", signalId, symbol, side, stopLoss, entryMin, entryMax, tp1, maxAge);
 }
@@ -179,6 +216,18 @@ double JsonGetDoubleFromSection(string json, string sectionKey, string key)
    int braceStart = StringFind(json, "{", secStart);
    int braceEnd = StringFind(json, "}", braceStart);
    if(braceStart < 0 || braceEnd < 0) return 0;
+   string section = StringSubstr(json, braceStart, braceEnd - braceStart + 1);
+   return JsonGetDouble(section, key);
+}
+
+double JsonGetDoubleFromArrayObject(string json, string sectionKey, string key)
+{
+   int secStart = StringFind(json, sectionKey);
+   if(secStart < 0) return 0;
+   int bracketStart = StringFind(json, "[", secStart);
+   int braceStart = StringFind(json, "{", bracketStart);
+   int braceEnd = StringFind(json, "}", braceStart);
+   if(bracketStart < 0 || braceStart < 0 || braceEnd < 0) return 0;
    string section = StringSubstr(json, braceStart, braceEnd - braceStart + 1);
    return JsonGetDouble(section, key);
 }

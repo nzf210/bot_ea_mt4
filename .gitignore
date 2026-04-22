@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+news_cache.json
+latest_signal.json
+journal.log
