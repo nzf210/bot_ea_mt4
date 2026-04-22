@@ -779,6 +779,19 @@ def _run_startup_checks():
     checks.append({"name": "signal_store_writable", "ok": os.path.isdir(signal_dir) and os.access(signal_dir, os.W_OK), "detail": signal_dir})
     checks.append({"name": "journal_store_writable", "ok": os.path.isdir(journal_dir) and os.access(journal_dir, os.W_OK), "detail": journal_dir})
     checks.append({"name": "snapshot_store_writable", "ok": os.path.isdir(snapshot_dir) and os.access(snapshot_dir, os.W_OK), "detail": snapshot_dir})
+
+    risk_cfg = _effective_risk_config()
+    checks.append({"name": "active_signal_ttl_valid", "ok": risk_cfg["active_signal_ttl_sec"] > 0, "detail": risk_cfg["active_signal_ttl_sec"]})
+    checks.append({"name": "post_close_cooldown_valid", "ok": risk_cfg["post_close_cooldown_sec"] >= 0, "detail": risk_cfg["post_close_cooldown_sec"]})
+    checks.append({"name": "loss_cooldown_valid", "ok": risk_cfg["loss_cooldown_sec"] >= 0, "detail": risk_cfg["loss_cooldown_sec"]})
+    checks.append({"name": "max_consecutive_losses_valid", "ok": risk_cfg["max_consecutive_losses_per_side"] >= 1, "detail": risk_cfg["max_consecutive_losses_per_side"]})
+    checks.append({"name": "xau_spread_valid", "ok": risk_cfg["xau_max_spread_points"] > 0, "detail": risk_cfg["xau_max_spread_points"]})
+    checks.append({"name": "forex_spread_valid", "ok": risk_cfg["forex_max_spread_points"] > 0, "detail": risk_cfg["forex_max_spread_points"]})
+    checks.append({"name": "gemini_min_confidence_valid", "ok": 0 <= risk_cfg["gemini_min_confidence"] <= 1, "detail": risk_cfg["gemini_min_confidence"]})
+    checks.append({"name": "gemini_override_confidence_valid", "ok": 0 <= risk_cfg["gemini_override_confidence"] <= 1, "detail": risk_cfg["gemini_override_confidence"]})
+    checks.append({"name": "session_window_valid", "ok": 0 <= risk_cfg["session_start_hour_utc"] <= 23 and 0 <= risk_cfg["session_end_hour_utc"] <= 23 and risk_cfg["session_start_hour_utc"] != risk_cfg["session_end_hour_utc"], "detail": f"{risk_cfg['session_start_hour_utc']}->{risk_cfg['session_end_hour_utc']}"})
+    checks.append({"name": "news_block_minutes_valid", "ok": risk_cfg["default_news_block_minutes"] >= 0, "detail": risk_cfg["default_news_block_minutes"]})
+
     startup_ready = all(item["ok"] for item in checks)
     STARTUP_STATUS["ready"] = startup_ready
     STARTUP_STATUS["checks"] = checks
