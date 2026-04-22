@@ -10,7 +10,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
-from gemini_decider import decide_trade, normalize_symbol
+from gemini_decider import decide_trade, normalize_symbol, get_gemini_runtime_state
 
 BASE_DIR = os.path.dirname(__file__)
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -950,6 +950,7 @@ def ops_summary(authorization: Optional[str] = Header(default=None)):
             "last_selected": AI4TRADE_STATE.get("last_selected"),
             "last_error": AI4TRADE_STATE.get("last_error"),
         },
+        "gemini": get_gemini_runtime_state(),
         "risk_config": _effective_risk_config(),
     }
 

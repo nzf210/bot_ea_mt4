@@ -26,6 +26,15 @@ XAU_MAX_CANDLE_RANGE = float(os.getenv("XAU_MAX_CANDLE_RANGE", "8.0"))
 FOREX_MIN_CANDLE_RANGE = float(os.getenv("FOREX_MIN_CANDLE_RANGE", "0.0005"))
 FOREX_MAX_CANDLE_RANGE = float(os.getenv("FOREX_MAX_CANDLE_RANGE", "0.0080"))
 GEMINI_OVERRIDE_CONFIDENCE = float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.72"))
+GEMINI_RUNTIME_STATE = {
+    "enabled": GEMINI_ENABLED,
+    "model": GEMINI_MODEL,
+    "binary_found": False,
+    "binary_path": None,
+    "last_error": None,
+    "last_return_code": None,
+    "last_decision_source": None,
+}
 
 
 def normalize_symbol(symbol: str) -> str:
@@ -222,6 +231,15 @@ def _gemini_prompt(snapshot: dict, pf: dict) -> str:
     )
 
 
+def get_gemini_runtime_state():
+    gemini_bin = shutil.which("gemini")
+    GEMINI_RUNTIME_STATE["enabled"] = GEMINI_ENABLED
+    GEMINI_RUNTIME_STATE["model"] = GEMINI_MODEL
+    GEMINI_RUNTIME_STATE["binary_found"] = bool(gemini_bin)
+    GEMINI_RUNTIME_STATE["binary_path"] = gemini_bin
+    return dict(GEMINI_RUNTIME_STATE)
+
+
 def _debug(message: str):
     if GEMINI_DEBUG:
         print(f"[gemini_decider] {message}")
@@ -232,7 +250,11 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
         _debug("Gemini disabled by config, using fallback")
         return None
     gemini_bin = shutil.which("gemini")
+    GEMINI_RUNTIME_STATE["binary_found"] = bool(gemini_bin)
+    GEMINI_RUNTIME_STATE["binary_path"] = gemini_bin
     if not gemini_bin:
+        GEMINI_RUNTIME_STATE["last_error"] = "gemini_cli_not_found"
+        GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
         _debug("Gemini CLI not found, using fallback")
         return None
     prompt = _gemini_prompt(snapshot, pf)
@@ -248,17 +270,24 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
             timeout=45,
             cwd=BASE_DIR,
         )
+        GEMINI_RUNTIME_STATE["last_return_code"] = result.returncode
         if result.returncode != 0:
+            GEMINI_RUNTIME_STATE["last_error"] = (result.stderr or result.stdout or "gemini_cli_failed").strip()[:300]
+            GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
             _debug(f"Gemini CLI failed rc={result.returncode}, stderr={(result.stderr or '').strip()[:300]}")
             return None
         raw = (result.stdout or "").strip()
         if not raw:
+            GEMINI_RUNTIME_STATE["last_error"] = "gemini_empty_output"
+            GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
             _debug("Gemini returned empty output, using fallback")
             return None
         parsed = json.loads(raw)
         decision = str(parsed.get("decision", "NO_TRADE")).upper()
         confidence = float(parsed.get("confidence", 0.0))
         if decision not in {"BUY", "SELL", "NO_TRADE"}:
+            GEMINI_RUNTIME_STATE["last_error"] = f"gemini_invalid_decision:{decision}"
+            GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
             _debug(f"Gemini returned invalid decision={decision}, using fallback")
             return None
         symbol = normalize_symbol(parsed.get("symbol") or snapshot["symbol"])
@@ -277,6 +306,8 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
                 "symbol": symbol,
                 "timeframe": timeframe,
             }
+        GEMINI_RUNTIME_STATE["last_error"] = None
+        GEMINI_RUNTIME_STATE["last_decision_source"] = "gemini"
         _debug(f"Gemini decision used decision={decision} confidence={confidence} reason={reason}")
         return {
             "decision": decision,
@@ -288,6 +319,8 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
             "decision_source": "gemini",
         }
     except Exception as e:
+        GEMINI_RUNTIME_STATE["last_error"] = str(e)
+        GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
         _debug(f"Gemini exception {e}, using fallback")
         return None
     finally:
@@ -305,6 +338,7 @@ def decide_trade(snapshot: dict):
 
     fallback = decide_with_mock_gemini(snapshot)
     fallback["decision_source"] = "mock"
+    GEMINI_RUNTIME_STATE["last_decision_source"] = "mock"
     gemini_result = _try_decide_with_gemini(snapshot, pf)
     if gemini_result is not None:
         if gemini_result.get("entry") is None:
