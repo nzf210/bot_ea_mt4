@@ -43,6 +43,7 @@ AI4TRADE_DRY_RUN_LOG = os.getenv("AI4TRADE_DRY_RUN_LOG", os.path.join(BASE_DIR, 
 AI_SIGNAL_PUBLISH_ENABLED = os.getenv("AI_SIGNAL_PUBLISH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 AI_SIGNAL_IGNORE_PUBLISH_ERRORS = os.getenv("AI_SIGNAL_IGNORE_PUBLISH_ERRORS", "true").lower() in {"1", "true", "yes", "on"}
 AI_SIGNAL_PROCESSING_INTERVAL_SEC = float(os.getenv("AI_SIGNAL_PROCESSING_INTERVAL_SEC", "0.1"))
+ACTIVE_SIGNAL_TTL_SEC = int(os.getenv("ACTIVE_SIGNAL_TTL_SEC", "120"))
 XAU_ENTRY_ZONE_MIN = float(os.getenv("XAU_ENTRY_ZONE_MIN", "0.5"))
 XAU_ENTRY_ZONE_MAX = float(os.getenv("XAU_ENTRY_ZONE_MAX", "1.5"))
 XAU_ENTRY_ZONE_RANGE_MULT = float(os.getenv("XAU_ENTRY_ZONE_RANGE_MULT", "0.35"))
@@ -265,6 +266,29 @@ def _snapshot_range(snapshot: dict) -> float:
         return max(float(ohlc.get("high", 0)) - float(ohlc.get("low", 0)), 0.0)
     except Exception:
         return 0.0
+
+
+def _load_current_signal():
+    if not os.path.exists(SIGNAL_STORE):
+        return None
+    try:
+        with open(SIGNAL_STORE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _is_signal_fresh(signal: Optional[dict]) -> bool:
+    if not signal:
+        return False
+    ts = signal.get("timestamp_utc")
+    if not ts:
+        return False
+    try:
+        signal_dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except Exception:
+        return False
+    return (datetime.now(timezone.utc) - signal_dt).total_seconds() <= ACTIVE_SIGNAL_TTL_SEC
 
 
 def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, confidence: float, reason: str, snapshot: Optional[dict] = None):
@@ -533,6 +557,24 @@ async def snapshot_worker_loop():
                 key = f"{normalized_symbol}:{result['decision']}:{result['entry']}"
                 if state.get("last_keys", {}).get(normalized_symbol) == key:
                     continue
+                current_signal = _load_current_signal()
+                if _is_signal_fresh(current_signal):
+                    current_symbol = current_signal.get("symbol")
+                    current_side = current_signal.get("side")
+                    if current_symbol == normalized_symbol and current_side == result.get("decision"):
+                        SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
+                        SNAPSHOT_STATE["last_no_trade_reason"] = "active_signal_same_direction"
+                        SNAPSHOT_STATE["last_no_trade_symbol"] = normalized_symbol
+                        _append_journal({
+                            "event_id": str(uuid.uuid4()),
+                            "type": "snapshot_rejected",
+                            "at": datetime.now(timezone.utc).isoformat(),
+                            "symbol": normalized_symbol,
+                            "timeframe": snap.get("timeframe"),
+                            "reason": "active_signal_same_direction",
+                            "decision_source": result.get("decision_source", "unknown"),
+                        })
+                        continue
                 signal = _build_signal(normalized_symbol, result["decision"], result["entry"], result["timeframe"], result["confidence"], result["reason"], snap)
                 _store_generated_signal(signal)
                 _store_signal_payload(signal)
