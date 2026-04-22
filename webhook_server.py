@@ -940,19 +940,21 @@ def _run_startup_checks():
 
 @app.get("/")
 def health():
+    strategy = _strategy_summary()
+    queue = _queue_summary()
     return {
         "ok": True,
         "service": "xauusd-mt4-bridge",
         "ready": STARTUP_STATUS.get("ready", False),
         "checked_at": STARTUP_STATUS.get("checked_at"),
         "snapshot_queue": {
-            "queue_size": SNAPSHOT_QUEUE.qsize(),
-            "last_received_at": SNAPSHOT_STATE.get("last_received_at"),
-            "last_processed_at": SNAPSHOT_STATE.get("last_processed_at"),
-            "last_signal_id": SNAPSHOT_STATE.get("last_signal_id"),
-            "last_decision": SNAPSHOT_STATE.get("last_decision"),
-            "last_reason": SNAPSHOT_STATE.get("last_reason"),
-            "last_decision_source": SNAPSHOT_STATE.get("last_decision_source"),
+            "queue_size": queue.get("size"),
+            "last_received_at": queue.get("last_received_at"),
+            "last_processed_at": queue.get("last_processed_at"),
+            "last_signal_id": strategy.get("last_signal_id"),
+            "last_decision": strategy.get("last_decision"),
+            "last_reason": strategy.get("last_reason"),
+            "last_decision_source": strategy.get("last_decision_source"),
             "last_error": SNAPSHOT_STATE.get("last_error"),
         },
     }
@@ -1116,12 +1118,12 @@ def ai4trade_dry_run(authorization: Optional[str] = Header(default=None)):
 @app.get("/news/status")
 def news_status(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-    active_news = get_active_news_event(DEFAULT_NEWS_BLOCK_MINUTES)
+    summary = _news_summary()
     return {
         "ok": True,
-        "news_blocked": active_news is not None,
-        "active_news": active_news,
-        "news_updated_at": NEWS_CACHE.get("updated_at"),
+        "news_blocked": summary.get("blocked"),
+        "active_news": summary.get("active"),
+        "news_updated_at": summary.get("updated_at"),
         "cached_events": len(NEWS_CACHE.get("latest", [])),
     }
 

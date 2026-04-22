@@ -237,7 +237,9 @@ def get_gemini_runtime_state():
     GEMINI_RUNTIME_STATE["model"] = GEMINI_MODEL
     GEMINI_RUNTIME_STATE["binary_found"] = bool(gemini_bin)
     GEMINI_RUNTIME_STATE["binary_path"] = gemini_bin
-    return dict(GEMINI_RUNTIME_STATE)
+    state = dict(GEMINI_RUNTIME_STATE)
+    state["last_mode"] = state.get("last_decision_source")
+    return state
 
 
 def set_gemini_runtime_state(payload: dict):
