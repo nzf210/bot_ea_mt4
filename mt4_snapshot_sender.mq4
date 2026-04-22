@@ -13,11 +13,11 @@ string IsoTimeUTC()
       dt.hour, dt.min, dt.sec);
 }
 
-string CharArrayToStringSafe(char &arr[])
+string CharArrayToStringSafe(uchar &arr[])
 {
    if(ArraySize(arr) <= 0)
       return "";
-   return CharArrayToString(arr, 0, -1);
+   return CharArrayToString(arr, 0, -1, CP_UTF8);
 }
 
 string JsonNumber(double value, int digits)
@@ -65,12 +65,12 @@ void SendSnapshot()
 
    Print("Snapshot request body: ", body);
 
-   string headers = "Authorization: Bearer " + ReceiverToken + "\r\nContent-Type: application/json\r\n";
-   char data[];
-   char result[];
+   string headers = "Authorization: Bearer " + ReceiverToken + "\r\nContent-Type: application/json; charset=utf-8\r\n";
+   uchar data[];
+   uchar result[];
    string resultHeaders;
-   int dataLen = StringToCharArray(body, data, 0, StringLen(body));
-   if(dataLen > 0)
+   int dataLen = StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
+   if(dataLen > 0 && data[dataLen - 1] == 0)
       ArrayResize(data, dataLen - 1);
    int code = WebRequest("POST", ReceiverUrl, headers, 5000, data, result, resultHeaders);
    if(code == -1)
