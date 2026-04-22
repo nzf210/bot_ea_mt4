@@ -9,6 +9,7 @@ extern int MaxSignalAgeSec = 180;
 extern int Slippage = 20;
 extern int MagicNumber = 20260421;
 extern bool EnableTrading = true;
+extern bool DebugLogging = true;
 
 string lastSignalId = "";
 datetime lastProcessedAt = 0;
@@ -27,6 +28,12 @@ bool IsSupportedChartSymbol()
    return chartSymbol == "XAUUSD";
 }
 
+void DebugPrint(string message)
+{
+   if(DebugLogging)
+      Print("DEBUG: ", message);
+}
+
 double DayStartEquity = 0;
 int ConsecutiveLosses = 0;
 datetime CooldownUntil = 0;
@@ -39,16 +46,39 @@ int OnInit()
 
 void OnTick()
 {
-   if(!EnableTrading) return;
-   if(!IsSupportedChartSymbol()) return;
-   if(TimeCurrent() < CooldownUntil) return;
-   if(IsDailyLossLimitHit()) return;
+   if(!EnableTrading)
+   {
+      DebugPrint("skip: trading disabled");
+      return;
+   }
+   if(!IsSupportedChartSymbol())
+   {
+      DebugPrint("skip: unsupported chart symbol " + Symbol());
+      return;
+   }
+   if(TimeCurrent() < CooldownUntil)
+   {
+      DebugPrint("skip: cooldown active");
+      return;
+   }
+   if(IsDailyLossLimitHit())
+   {
+      DebugPrint("skip: daily loss limit hit");
+      return;
+   }
    
-   // Check only for orders with our MagicNumber and Symbol
-   if(CountCurrentOrders() > 0) return;
+   if(CountCurrentOrders() > 0)
+   {
+      DebugPrint("skip: existing order for symbol/magic");
+      return;
+   }
 
    string json = HttpGetLatestSignal();
-   if(StringLen(json) < 20) return;
+   if(StringLen(json) < 20)
+   {
+      DebugPrint("skip: empty or invalid signal response");
+      return;
+   }
 
    string signalId = JsonGetString(json, "signal_id");
    string symbol = JsonGetString(json, "symbol");
@@ -60,20 +90,49 @@ void OnTick()
    int maxAge = (int)JsonGetDouble(json, "max_signal_age_sec");
    if(maxAge <= 0) maxAge = MaxSignalAgeSec;
 
-   if(signalId == "" || signalId == lastSignalId) return;
-   if(NormalizeBridgeSymbol(symbol) != NormalizeBridgeSymbol(Symbol())) return;
+   if(signalId == "")
+   {
+      DebugPrint("skip: missing signal_id");
+      return;
+   }
+   if(signalId == lastSignalId)
+   {
+      DebugPrint("skip: signal already processed " + signalId);
+      return;
+   }
+   if(NormalizeBridgeSymbol(symbol) != NormalizeBridgeSymbol(Symbol()))
+   {
+      DebugPrint("skip: symbol mismatch signal=" + symbol + " chart=" + Symbol());
+      return;
+   }
 
    int spread = (int)MarketInfo(Symbol(), MODE_SPREAD);
-   if(spread > MaxSpreadPoints) return;
+   if(spread > MaxSpreadPoints)
+   {
+      DebugPrint("skip: spread too high current=" + IntegerToString(spread) + " max=" + IntegerToString(MaxSpreadPoints));
+      return;
+   }
 
    double price = (side == "BUY") ? Ask : Bid;
-   if(price < entryMin || price > entryMax) return;
+   if(price < entryMin || price > entryMax)
+   {
+      DebugPrint("skip: price outside entry zone price=" + DoubleToString(price, Digits) + " min=" + DoubleToString(entryMin, Digits) + " max=" + DoubleToString(entryMax, Digits));
+      return;
+   }
 
    double slPoints = MathAbs(price - stopLoss) / Point;
-   if(slPoints <= 0) return;
+   if(slPoints <= 0)
+   {
+      DebugPrint("skip: invalid stop loss distance");
+      return;
+   }
 
    double lot = CalcLot(slPoints);
-   if(lot < MarketInfo(Symbol(), MODE_MINLOT)) return;
+   if(lot < MarketInfo(Symbol(), MODE_MINLOT))
+   {
+      DebugPrint("skip: calculated lot below broker minimum");
+      return;
+   }
 
    int cmd = (side == "BUY") ? OP_BUY : OP_SELL;
    RefreshRates();
@@ -156,16 +215,24 @@ string HttpGetLatestSignal()
    if(code == -1)
    {
       Print("WebRequest failed: ", GetLastError());
+      DebugPrint("request url=" + url);
       return "";
    }
 
    string response = CharArrayToString(result);
+   DebugPrint("http code=" + IntegerToString(code));
+   if(DebugLogging)
+      DebugPrint("raw response=" + response);
    return FlattenSignalResponse(response);
 }
 
 string FlattenSignalResponse(string response)
 {
-   if(StringFind(response, "\"signal\":null") >= 0) return "";
+   if(StringFind(response, "\"signal\":null") >= 0)
+   {
+      DebugPrint("skip: no signal available");
+      return "";
+   }
    if(StringFind(response, "\"news_blocked\":true") >= 0)
    {
       Print("Trading blocked by news filter");
