@@ -24,6 +24,7 @@ XAU_MIN_CANDLE_RANGE = float(os.getenv("XAU_MIN_CANDLE_RANGE", "0.8"))
 XAU_MAX_CANDLE_RANGE = float(os.getenv("XAU_MAX_CANDLE_RANGE", "8.0"))
 FOREX_MIN_CANDLE_RANGE = float(os.getenv("FOREX_MIN_CANDLE_RANGE", "0.0005"))
 FOREX_MAX_CANDLE_RANGE = float(os.getenv("FOREX_MAX_CANDLE_RANGE", "0.0080"))
+GEMINI_OVERRIDE_CONFIDENCE = float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.72"))
 
 
 def normalize_symbol(symbol: str) -> str:
@@ -167,13 +168,28 @@ def prefilter(snapshot: dict):
     }
 
 
+def _score_prefilter_confidence(snapshot: dict, pf: dict) -> float:
+    confidence = 0.55
+    reason = str(pf.get("reason", ""))
+    if "recent_structure_buy" in reason or "recent_structure_sell" in reason:
+        confidence += 0.1
+    if "range_ok:" in reason:
+        confidence += 0.05
+    candles = _extract_recent_candles(snapshot)
+    if len(candles) >= 3:
+        same_dir = [_candle_direction(c) for c in candles[:3]]
+        if len(set(same_dir)) == 1 and "FLAT" not in same_dir:
+            confidence += 0.1
+    return min(confidence, 0.8)
+
+
 def decide_with_mock_gemini(snapshot: dict):
     pf = prefilter(snapshot)
     if not pf["pass"]:
         return {"decision": "NO_TRADE", "confidence": 0.0, "reason": pf["reason"]}
     return {
         "decision": pf["bias"],
-        "confidence": 0.6,
+        "confidence": _score_prefilter_confidence(snapshot, pf),
         "reason": pf["reason"],
         "entry": pf["entry"],
         "symbol": normalize_symbol(snapshot["symbol"]),
@@ -195,10 +211,12 @@ def _gemini_prompt(snapshot: dict, pf: dict) -> str:
         "prefilter": pf,
     }
     return (
-        "You are a trading signal classifier for short-term MT4 execution. "
-        "Given the market snapshot JSON, return ONLY valid JSON with keys: decision, confidence, reason, entry, symbol, timeframe. "
-        "decision must be one of BUY, SELL, NO_TRADE. confidence must be 0..1. "
-        "If unsure, return NO_TRADE. Use the provided prefilter bias as a hint, not a rule. "
+        "You are a trading decision assistant for short-term MT4 execution on GOLD/forex. "
+        "You must be conservative. Deterministic prefilter has already passed, so your job is to confirm or downgrade setup quality, not invent reckless trades. "
+        "Return ONLY valid JSON with keys: decision, confidence, reason, entry, symbol, timeframe. "
+        "decision must be one of BUY, SELL, NO_TRADE. confidence must be 0..1. entry must be numeric. "
+        "Prefer NO_TRADE when the setup is weak, stretched, noisy, late, or unclear. "
+        "Use recent_candles, volatility, spread, and prefilter reasoning. Avoid contrarian overrides unless confidence is very high and reason is explicit. "
         f"Snapshot: {json.dumps(payload, ensure_ascii=False)}"
     )
 
@@ -272,13 +290,26 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
 def decide_trade(snapshot: dict):
     pf = prefilter(snapshot)
     if not pf["pass"]:
-        return {"decision": "NO_TRADE", "confidence": 0.0, "reason": pf["reason"]}
+        return {"decision": "NO_TRADE", "confidence": 0.0, "reason": pf["reason"], "decision_source": "rule_gate"}
+
+    fallback = decide_with_mock_gemini(snapshot)
+    fallback["decision_source"] = "mock"
     gemini_result = _try_decide_with_gemini(snapshot, pf)
     if gemini_result is not None:
         if gemini_result.get("entry") is None:
             gemini_result["entry"] = pf["entry"]
-        return gemini_result
-    fallback = decide_with_mock_gemini(snapshot)
-    fallback["decision_source"] = "mock"
+        if gemini_result.get("decision") == fallback.get("decision"):
+            gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), float(fallback.get("confidence", 0.0)))
+            _debug(f"Hybrid decision aligned with fallback decision={gemini_result.get('decision')}")
+            return gemini_result
+        if gemini_result.get("decision") == "NO_TRADE":
+            _debug("Hybrid decision downgraded to NO_TRADE by Gemini")
+            return gemini_result
+        if float(gemini_result.get("confidence", 0.0)) >= GEMINI_OVERRIDE_CONFIDENCE:
+            gemini_result["reason"] = f"gemini_override|{gemini_result.get('reason')}"
+            _debug(f"Hybrid override accepted decision={gemini_result.get('decision')} confidence={gemini_result.get('confidence')}")
+            return gemini_result
+        _debug("Hybrid override rejected, fallback kept")
+
     _debug(f"Fallback decision used decision={fallback.get('decision')} reason={fallback.get('reason')}")
     return fallback
