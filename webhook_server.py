@@ -715,6 +715,24 @@ def get_active_news_event(block_minutes: int = DEFAULT_NEWS_BLOCK_MINUTES):
     return None
 
 
+def _effective_risk_config():
+    return {
+        "active_signal_ttl_sec": ACTIVE_SIGNAL_TTL_SEC,
+        "reversal_on_open_position": REVERSAL_ON_OPEN_POSITION,
+        "post_close_cooldown_sec": POST_CLOSE_COOLDOWN_SEC,
+        "loss_cooldown_sec": LOSS_COOLDOWN_SEC,
+        "max_consecutive_losses_per_side": MAX_CONSECUTIVE_LOSSES_PER_SIDE,
+        "xau_max_spread_points": int(os.getenv("XAU_MAX_SPREAD_POINTS", "120")),
+        "forex_max_spread_points": int(os.getenv("FOREX_MAX_SPREAD_POINTS", "35")),
+        "gemini_min_confidence": float(os.getenv("GEMINI_MIN_CONFIDENCE", "0.55")),
+        "gemini_override_confidence": float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.72")),
+        "session_filter_enabled": os.getenv("SESSION_FILTER_ENABLED", "true").lower() in {"1", "true", "yes", "on"},
+        "session_start_hour_utc": int(os.getenv("SESSION_START_HOUR_UTC", "6")),
+        "session_end_hour_utc": int(os.getenv("SESSION_END_HOUR_UTC", "21")),
+        "default_news_block_minutes": DEFAULT_NEWS_BLOCK_MINUTES,
+    }
+
+
 def _run_startup_checks():
     checks = []
     env_exists = os.path.exists(os.path.join(BASE_DIR, ".env"))
@@ -783,6 +801,45 @@ def strategy_status(authorization: Optional[str] = Header(default=None)):
         "signal_present": signal_payload is not None,
         "signal_age_sec": signal_age_sec,
         "signal": signal_payload,
+        "risk_config": _effective_risk_config(),
+    }
+
+
+@app.get("/risk/status")
+def risk_status(authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    current_signal = _load_current_signal()
+    signal_status = None
+    signal_side = None
+    signal_symbol = None
+    signal_age_sec = None
+    if current_signal:
+        signal_status = current_signal.get("status")
+        signal_side = current_signal.get("side")
+        signal_symbol = current_signal.get("symbol")
+        ts = _parse_iso_utc(current_signal.get("timestamp_utc"))
+        if ts is not None:
+            signal_age_sec = round((datetime.now(timezone.utc) - ts).total_seconds(), 2)
+    return {
+        "ok": True,
+        "risk_config": _effective_risk_config(),
+        "risk_state": {
+            "last_trade_outcome": SNAPSHOT_STATE.get("last_trade_outcome"),
+            "last_loss_side": SNAPSHOT_STATE.get("last_loss_side"),
+            "last_loss_at": SNAPSHOT_STATE.get("last_loss_at"),
+            "consecutive_losses": SNAPSHOT_STATE.get("consecutive_losses"),
+            "last_no_trade_reason": SNAPSHOT_STATE.get("last_no_trade_reason"),
+            "last_execution_type": SNAPSHOT_STATE.get("last_execution_type"),
+            "last_execution_signal_id": SNAPSHOT_STATE.get("last_execution_signal_id"),
+        },
+        "current_signal": {
+            "present": current_signal is not None,
+            "symbol": signal_symbol,
+            "side": signal_side,
+            "status": signal_status,
+            "age_sec": signal_age_sec,
+            "fresh": _is_signal_fresh(current_signal),
+        }
     }
 
 
