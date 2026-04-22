@@ -733,6 +733,38 @@ def _effective_risk_config():
     }
 
 
+def _current_signal_summary():
+    current_signal = _load_current_signal()
+    signal_age_sec = None
+    if current_signal:
+        ts = _parse_iso_utc(current_signal.get("timestamp_utc"))
+        if ts is not None:
+            signal_age_sec = round((datetime.now(timezone.utc) - ts).total_seconds(), 2)
+    return {
+        "present": current_signal is not None,
+        "signal_id": current_signal.get("signal_id") if current_signal else None,
+        "symbol": current_signal.get("symbol") if current_signal else None,
+        "side": current_signal.get("side") if current_signal else None,
+        "status": current_signal.get("status") if current_signal else None,
+        "confidence": current_signal.get("confidence") if current_signal else None,
+        "age_sec": signal_age_sec,
+        "fresh": _is_signal_fresh(current_signal),
+    }
+
+
+def _risk_state_summary():
+    return {
+        "last_trade_outcome": SNAPSHOT_STATE.get("last_trade_outcome"),
+        "last_loss_side": SNAPSHOT_STATE.get("last_loss_side"),
+        "last_loss_at": SNAPSHOT_STATE.get("last_loss_at"),
+        "consecutive_losses": SNAPSHOT_STATE.get("consecutive_losses"),
+        "last_no_trade_reason": SNAPSHOT_STATE.get("last_no_trade_reason"),
+        "last_execution_type": SNAPSHOT_STATE.get("last_execution_type"),
+        "last_execution_signal_id": SNAPSHOT_STATE.get("last_execution_signal_id"),
+        "last_execution_ticket": SNAPSHOT_STATE.get("last_execution_ticket"),
+    }
+
+
 def _run_startup_checks():
     checks = []
     env_exists = os.path.exists(os.path.join(BASE_DIR, ".env"))
@@ -808,38 +840,50 @@ def strategy_status(authorization: Optional[str] = Header(default=None)):
 @app.get("/risk/status")
 def risk_status(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-    current_signal = _load_current_signal()
-    signal_status = None
-    signal_side = None
-    signal_symbol = None
-    signal_age_sec = None
-    if current_signal:
-        signal_status = current_signal.get("status")
-        signal_side = current_signal.get("side")
-        signal_symbol = current_signal.get("symbol")
-        ts = _parse_iso_utc(current_signal.get("timestamp_utc"))
-        if ts is not None:
-            signal_age_sec = round((datetime.now(timezone.utc) - ts).total_seconds(), 2)
     return {
         "ok": True,
         "risk_config": _effective_risk_config(),
-        "risk_state": {
-            "last_trade_outcome": SNAPSHOT_STATE.get("last_trade_outcome"),
-            "last_loss_side": SNAPSHOT_STATE.get("last_loss_side"),
-            "last_loss_at": SNAPSHOT_STATE.get("last_loss_at"),
-            "consecutive_losses": SNAPSHOT_STATE.get("consecutive_losses"),
-            "last_no_trade_reason": SNAPSHOT_STATE.get("last_no_trade_reason"),
-            "last_execution_type": SNAPSHOT_STATE.get("last_execution_type"),
-            "last_execution_signal_id": SNAPSHOT_STATE.get("last_execution_signal_id"),
+        "risk_state": _risk_state_summary(),
+        "current_signal": _current_signal_summary(),
+    }
+
+
+@app.get("/ops/summary")
+def ops_summary(authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    active_news = get_active_news_event(DEFAULT_NEWS_BLOCK_MINUTES)
+    return {
+        "ok": True,
+        "service": "xauusd-mt4-bridge",
+        "ready": STARTUP_STATUS.get("ready", False),
+        "checked_at": STARTUP_STATUS.get("checked_at"),
+        "queue": {
+            "size": SNAPSHOT_QUEUE.qsize(),
+            "last_received_at": SNAPSHOT_STATE.get("last_received_at"),
+            "last_processed_at": SNAPSHOT_STATE.get("last_processed_at"),
         },
-        "current_signal": {
-            "present": current_signal is not None,
-            "symbol": signal_symbol,
-            "side": signal_side,
-            "status": signal_status,
-            "age_sec": signal_age_sec,
-            "fresh": _is_signal_fresh(current_signal),
-        }
+        "strategy": {
+            "last_signal_id": SNAPSHOT_STATE.get("last_signal_id"),
+            "last_decision": SNAPSHOT_STATE.get("last_decision"),
+            "last_reason": SNAPSHOT_STATE.get("last_reason"),
+            "last_decision_source": SNAPSHOT_STATE.get("last_decision_source"),
+            "last_snapshot_timeframe": SNAPSHOT_STATE.get("last_snapshot_timeframe"),
+        },
+        "risk": _risk_state_summary(),
+        "current_signal": _current_signal_summary(),
+        "news": {
+            "blocked": active_news is not None,
+            "active": active_news,
+            "updated_at": NEWS_CACHE.get("updated_at"),
+        },
+        "ai4trade": {
+            "enabled": bool(AI4TRADE_TOKEN),
+            "last_fetch_at": AI4TRADE_STATE.get("last_fetch_at"),
+            "last_signal_count": AI4TRADE_STATE.get("last_signal_count"),
+            "last_selected": AI4TRADE_STATE.get("last_selected"),
+            "last_error": AI4TRADE_STATE.get("last_error"),
+        },
+        "risk_config": _effective_risk_config(),
     }
 
 
