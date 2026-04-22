@@ -43,6 +43,12 @@ AI4TRADE_DRY_RUN_LOG = os.getenv("AI4TRADE_DRY_RUN_LOG", os.path.join(BASE_DIR, 
 AI_SIGNAL_PUBLISH_ENABLED = os.getenv("AI_SIGNAL_PUBLISH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 AI_SIGNAL_IGNORE_PUBLISH_ERRORS = os.getenv("AI_SIGNAL_IGNORE_PUBLISH_ERRORS", "true").lower() in {"1", "true", "yes", "on"}
 AI_SIGNAL_PROCESSING_INTERVAL_SEC = float(os.getenv("AI_SIGNAL_PROCESSING_INTERVAL_SEC", "0.1"))
+XAU_ENTRY_ZONE_MIN = float(os.getenv("XAU_ENTRY_ZONE_MIN", "0.5"))
+XAU_ENTRY_ZONE_MAX = float(os.getenv("XAU_ENTRY_ZONE_MAX", "1.5"))
+XAU_ENTRY_ZONE_RANGE_MULT = float(os.getenv("XAU_ENTRY_ZONE_RANGE_MULT", "0.35"))
+FOREX_ENTRY_ZONE_MIN = float(os.getenv("FOREX_ENTRY_ZONE_MIN", "0.0005"))
+FOREX_ENTRY_ZONE_MAX = float(os.getenv("FOREX_ENTRY_ZONE_MAX", "0.0015"))
+FOREX_ENTRY_ZONE_RANGE_MULT = float(os.getenv("FOREX_ENTRY_ZONE_RANGE_MULT", "0.25"))
 NEWS_URL = os.getenv("NEWS_CALENDAR_URL", "https://nfs.faireconomy.media/ff_calendar_thisweek.json")
 NEWS_REFRESH_SEC = int(os.getenv("NEWS_REFRESH_SEC", "3600"))
 DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
@@ -245,19 +251,32 @@ def _store_generated_signal(payload: dict):
         json.dump(payload, f, indent=2)
 
 
-def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, confidence: float, reason: str):
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(value, max_value))
+
+
+def _snapshot_range(snapshot: dict) -> float:
+    ohlc = snapshot.get("ohlc") or {}
+    try:
+        return max(float(ohlc.get("high", 0)) - float(ohlc.get("low", 0)), 0.0)
+    except Exception:
+        return 0.0
+
+
+def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, confidence: float, reason: str, snapshot: Optional[dict] = None):
+    candle_range = _snapshot_range(snapshot or {})
     if symbol == "XAUUSD":
-        zone = 0.3
-        sl_offset = 5.0
-        tp1_offset = 8.0
-        tp2_offset = 12.0
+        zone = _clamp(candle_range * XAU_ENTRY_ZONE_RANGE_MULT, XAU_ENTRY_ZONE_MIN, XAU_ENTRY_ZONE_MAX)
+        sl_offset = max(5.0, zone * 4.0)
+        tp1_offset = max(8.0, zone * 6.0)
+        tp2_offset = max(12.0, zone * 9.0)
         digits = 2
         spread_max_points = 120
     else:
-        zone = 0.0005
-        sl_offset = 0.0030
-        tp1_offset = 0.0050
-        tp2_offset = 0.0080
+        zone = _clamp(candle_range * FOREX_ENTRY_ZONE_RANGE_MULT, FOREX_ENTRY_ZONE_MIN, FOREX_ENTRY_ZONE_MAX)
+        sl_offset = max(0.0030, zone * 4.0)
+        tp1_offset = max(0.0050, zone * 6.0)
+        tp2_offset = max(0.0080, zone * 9.0)
         digits = 5
         spread_max_points = 35
 
@@ -284,6 +303,8 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
             "spread_max_points": spread_max_points,
             "session": "LOCAL_AI_QUEUE",
             "news_block_minutes": DEFAULT_NEWS_BLOCK_MINUTES,
+            "entry_zone_size": round(zone, digits),
+            "snapshot_range": round(candle_range, digits),
         },
         "received_at": datetime.now(timezone.utc).isoformat(),
         "status": "READY",
@@ -495,7 +516,7 @@ async def snapshot_worker_loop():
                 key = f"{normalized_symbol}:{result['decision']}:{result['entry']}"
                 if state.get("last_keys", {}).get(normalized_symbol) == key:
                     continue
-                signal = _build_signal(normalized_symbol, result["decision"], result["entry"], result["timeframe"], result["confidence"], result["reason"])
+                signal = _build_signal(normalized_symbol, result["decision"], result["entry"], result["timeframe"], result["confidence"], result["reason"], snap)
                 _store_generated_signal(signal)
                 _store_signal_payload(signal)
                 state.setdefault("last_keys", {})[normalized_symbol] = key
