@@ -39,6 +39,8 @@ AI4TRADE_STATE = {
     "last_selected": None,
     "last_error": None,
 }
+AI4TRADE_DRY_RUN = os.getenv("AI4TRADE_DRY_RUN", "true").lower() in {"1", "true", "yes", "on"}
+AI4TRADE_DRY_RUN_LOG = os.getenv("AI4TRADE_DRY_RUN_LOG", os.path.join(BASE_DIR, "ai4trade_dry_run.log"))
 NEWS_URL = os.getenv("NEWS_CALENDAR_URL", "https://nfs.faireconomy.media/ff_calendar_thisweek.json")
 NEWS_REFRESH_SEC = int(os.getenv("NEWS_REFRESH_SEC", "3600"))
 DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
@@ -107,6 +109,13 @@ def _save_ai4trade_raw(payload):
     except Exception as e:
         print(f"Error saving ai4trade raw payload: {e}")
 
+def _append_ai4trade_dry_run(event: dict):
+    try:
+        with open(AI4TRADE_DRY_RUN_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+    except Exception as e:
+        print(f"Error writing ai4trade dry run log: {e}")
+
 async def refresh_ai4trade_signal_once():
     if not AI4TRADE_TOKEN:
         return
@@ -123,7 +132,7 @@ async def refresh_ai4trade_signal_once():
             AI4TRADE_STATE["last_signal_count"] = len(signals)
             AI4TRADE_STATE["last_selected"] = converted.get("signal_id") if converted else None
             AI4TRADE_STATE["last_error"] = None
-            if converted:
+            if converted and not AI4TRADE_DRY_RUN:
                 os.makedirs(os.path.dirname(SIGNAL_STORE), exist_ok=True)
                 with open(SIGNAL_STORE, "w", encoding="utf-8") as f:
                     json.dump(converted, f, indent=2)
@@ -156,24 +165,56 @@ def _infer_xau_levels(side: str, entry_price: float, content: str):
 
 def convert_ai4trade_signal(signals: list):
     for item in signals:
+        trace = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "dry_run": AI4TRADE_DRY_RUN,
+            "signal_id": item.get("signal_id") or item.get("id") if isinstance(item, dict) else None,
+            "agent_id": item.get("agent_id") if isinstance(item, dict) else None,
+            "symbol": item.get("symbol") if isinstance(item, dict) else None,
+            "market": item.get("market") if isinstance(item, dict) else None,
+            "message_type": item.get("message_type") if isinstance(item, dict) else None,
+            "decision": None,
+            "reason": None,
+        }
         if not isinstance(item, dict):
+            trace["decision"] = "reject"
+            trace["reason"] = "not_a_dict"
+            _append_ai4trade_dry_run(trace)
             continue
         if AI4TRADE_AGENT_ID and str(item.get("agent_id")) != str(AI4TRADE_AGENT_ID):
+            trace["decision"] = "reject"
+            trace["reason"] = "agent_id_mismatch"
+            _append_ai4trade_dry_run(trace)
             continue
         if item.get("market") not in {"forex", "xau", "gold", "xauusd"}:
+            trace["decision"] = "reject"
+            trace["reason"] = "unsupported_market"
+            _append_ai4trade_dry_run(trace)
             continue
         symbol = (item.get("symbol") or "").upper()
         if symbol != "XAUUSD":
+            trace["decision"] = "reject"
+            trace["reason"] = "unsupported_symbol"
+            _append_ai4trade_dry_run(trace)
             continue
         side = (item.get("side") or item.get("action") or "").upper()
         if side not in {"BUY", "SELL"}:
+            trace["decision"] = "reject"
+            trace["reason"] = "missing_or_invalid_side"
+            _append_ai4trade_dry_run(trace)
             continue
         entry_price = item.get("entry_price") or item.get("price")
         if entry_price is None:
+            trace["decision"] = "reject"
+            trace["reason"] = "missing_entry_price"
+            _append_ai4trade_dry_run(trace)
             continue
         try:
             entry_price = float(entry_price)
         except Exception:
+            trace["decision"] = "reject"
+            trace["reason"] = "invalid_entry_price"
+            _append_ai4trade_dry_run(trace)
             continue
         signal_id = str(item.get("signal_id") or item.get("id") or "")
         timestamp_utc = item.get("executed_at") or item.get("created_at") or datetime.now(timezone.utc).isoformat()
@@ -181,7 +222,7 @@ def convert_ai4trade_signal(signals: list):
         confidence = 0.7 if item.get("message_type") == "operation" else AI4TRADE_MIN_CONFIDENCE
         stop_loss, tp1 = _infer_xau_levels(side, entry_price, content)
         zone_size = 0.3 if confidence < 0.8 else 0.2
-        return {
+        converted = {
             "signal_id": f"ai4trade-{signal_id}",
             "timestamp_utc": timestamp_utc.replace("Z", "+00:00").replace("+00:00", "Z"),
             "symbol": symbol,
@@ -213,6 +254,11 @@ def convert_ai4trade_signal(signals: list):
             "source_message_type": item.get("message_type"),
             "source_signal_type": item.get("signal_type"),
         }
+        trace["decision"] = "select"
+        trace["reason"] = "matched_xau_signal"
+        trace["converted"] = converted
+        _append_ai4trade_dry_run(trace)
+        return converted
     return None
 
 def get_active_news_event(block_minutes: int = DEFAULT_NEWS_BLOCK_MINUTES):
@@ -368,6 +414,21 @@ def ai4trade_raw(authorization: Optional[str] = Header(default=None)):
         return {"ok": True, "payload": None}
     with open(AI4TRADE_RAW_STORE, "r", encoding="utf-8") as f:
         return {"ok": True, "payload": json.load(f)}
+
+@app.get("/ai4trade/dry-run")
+def ai4trade_dry_run(authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    if not os.path.exists(AI4TRADE_DRY_RUN_LOG):
+        return {"ok": True, "enabled": AI4TRADE_DRY_RUN, "events": []}
+    with open(AI4TRADE_DRY_RUN_LOG, "r", encoding="utf-8") as f:
+        lines = f.readlines()[-100:]
+    events = []
+    for line in lines:
+        try:
+            events.append(json.loads(line))
+        except Exception:
+            continue
+    return {"ok": True, "enabled": AI4TRADE_DRY_RUN, "events": events}
 
 @app.get("/news/status")
 def news_status(authorization: Optional[str] = Header(default=None)):

@@ -105,6 +105,7 @@ Catatan:
 - adapter akan mencoba mapping signal feed ke format MT4 bridge
 - untuk saat ini adapter hanya cocok untuk signal `XAUUSD` dengan `BUY`/`SELL`
 - raw payload terakhir akan disimpan ke file agar mudah debug
+- tersedia dry-run log untuk menjelaskan kenapa signal dipilih atau ditolak
 - SL/TP sekarang memakai heuristik yang sedikit lebih spesifik untuk konteks XAU, tapi tetap belum sebaik signal execution-ready asli
 
 Lihat juga: `ai4trade_adapter.md`
@@ -112,6 +113,7 @@ Lihat juga: `ai4trade_adapter.md`
 Endpoint debug tambahan:
 - `GET /ai4trade/status`
 - `GET /ai4trade/raw`
+- `GET /ai4trade/dry-run`
 
 ## 7. File tambahan production
 
