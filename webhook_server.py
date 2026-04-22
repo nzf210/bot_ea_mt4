@@ -44,6 +44,8 @@ AI_SIGNAL_PUBLISH_ENABLED = os.getenv("AI_SIGNAL_PUBLISH_ENABLED", "true").lower
 AI_SIGNAL_IGNORE_PUBLISH_ERRORS = os.getenv("AI_SIGNAL_IGNORE_PUBLISH_ERRORS", "true").lower() in {"1", "true", "yes", "on"}
 AI_SIGNAL_PROCESSING_INTERVAL_SEC = float(os.getenv("AI_SIGNAL_PROCESSING_INTERVAL_SEC", "0.1"))
 ACTIVE_SIGNAL_TTL_SEC = int(os.getenv("ACTIVE_SIGNAL_TTL_SEC", "120"))
+REVERSAL_ON_OPEN_POSITION = os.getenv("REVERSAL_ON_OPEN_POSITION", "false").lower() in {"1", "true", "yes", "on"}
+POST_CLOSE_COOLDOWN_SEC = int(os.getenv("POST_CLOSE_COOLDOWN_SEC", "30"))
 XAU_ENTRY_ZONE_MIN = float(os.getenv("XAU_ENTRY_ZONE_MIN", "0.5"))
 XAU_ENTRY_ZONE_MAX = float(os.getenv("XAU_ENTRY_ZONE_MAX", "1.5"))
 XAU_ENTRY_ZONE_RANGE_MULT = float(os.getenv("XAU_ENTRY_ZONE_RANGE_MULT", "0.35"))
@@ -293,6 +295,38 @@ def _is_signal_fresh(signal: Optional[dict]) -> bool:
     except Exception:
         return False
     return (datetime.now(timezone.utc) - signal_dt).total_seconds() <= ACTIVE_SIGNAL_TTL_SEC
+
+
+def _parse_iso_utc(value: Optional[str]):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _check_signal_conflict(current_signal: Optional[dict], normalized_symbol: str, decision: str):
+    if not _is_signal_fresh(current_signal):
+        return None
+    current_symbol = current_signal.get("symbol")
+    current_side = current_signal.get("side")
+    current_status = current_signal.get("status")
+    if current_symbol != normalized_symbol:
+        return None
+    if current_side == decision:
+        if current_status == "OPEN":
+            return "position_open_same_direction"
+        return "active_signal_same_direction"
+    if current_status == "OPEN" and not REVERSAL_ON_OPEN_POSITION:
+        return "opposite_signal_blocked_open_position"
+    if current_status == "CLOSED":
+        closed_at = _parse_iso_utc(current_signal.get("closed_at"))
+        if closed_at is not None:
+            since_close = (datetime.now(timezone.utc) - closed_at).total_seconds()
+            if since_close < POST_CLOSE_COOLDOWN_SEC:
+                return "post_close_cooldown_active"
+    return None
 
 
 def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, confidence: float, reason: str, snapshot: Optional[dict] = None):
@@ -562,27 +596,21 @@ async def snapshot_worker_loop():
                 if state.get("last_keys", {}).get(normalized_symbol) == key:
                     continue
                 current_signal = _load_current_signal()
-                if _is_signal_fresh(current_signal):
-                    current_symbol = current_signal.get("symbol")
-                    current_side = current_signal.get("side")
-                    current_status = current_signal.get("status")
-                    if current_symbol == normalized_symbol and current_side == result.get("decision"):
-                        reject_reason = "active_signal_same_direction"
-                        if current_status == "OPEN":
-                            reject_reason = "position_open_same_direction"
-                        SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
-                        SNAPSHOT_STATE["last_no_trade_reason"] = reject_reason
-                        SNAPSHOT_STATE["last_no_trade_symbol"] = normalized_symbol
-                        _append_journal({
-                            "event_id": str(uuid.uuid4()),
-                            "type": "snapshot_rejected",
-                            "at": datetime.now(timezone.utc).isoformat(),
-                            "symbol": normalized_symbol,
-                            "timeframe": snap.get("timeframe"),
-                            "reason": reject_reason,
-                            "decision_source": result.get("decision_source", "unknown"),
-                        })
-                        continue
+                reject_reason = _check_signal_conflict(current_signal, normalized_symbol, result.get("decision"))
+                if reject_reason:
+                    SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
+                    SNAPSHOT_STATE["last_no_trade_reason"] = reject_reason
+                    SNAPSHOT_STATE["last_no_trade_symbol"] = normalized_symbol
+                    _append_journal({
+                        "event_id": str(uuid.uuid4()),
+                        "type": "snapshot_rejected",
+                        "at": datetime.now(timezone.utc).isoformat(),
+                        "symbol": normalized_symbol,
+                        "timeframe": snap.get("timeframe"),
+                        "reason": reject_reason,
+                        "decision_source": result.get("decision_source", "unknown"),
+                    })
+                    continue
                 signal = _build_signal(normalized_symbol, result["decision"], result["entry"], result["timeframe"], result["confidence"], result["reason"], snap)
                 _store_generated_signal(signal)
                 _store_signal_payload(signal)
