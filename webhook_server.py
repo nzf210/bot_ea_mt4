@@ -765,6 +765,30 @@ def _risk_state_summary():
     }
 
 
+def _read_journal_events(limit: int = 50, event_type: Optional[str] = None):
+    if not os.path.exists(JOURNAL_STORE):
+        return []
+    try:
+        with open(JOURNAL_STORE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except Exception:
+        return []
+    events = []
+    wanted_type = (event_type or "").strip()
+    for line in reversed(lines):
+        try:
+            item = json.loads(line)
+        except Exception:
+            continue
+        current_type = str(item.get("type") or item.get("event_type") or "")
+        if wanted_type and current_type != wanted_type:
+            continue
+        events.append(item)
+        if len(events) >= limit:
+            break
+    return events
+
+
 def _run_startup_checks():
     checks = []
     env_exists = os.path.exists(os.path.join(BASE_DIR, ".env"))
@@ -991,6 +1015,20 @@ def news_status(authorization: Optional[str] = Header(default=None)):
         "active_news": active_news,
         "news_updated_at": NEWS_CACHE.get("updated_at"),
         "cached_events": len(NEWS_CACHE.get("latest", [])),
+    }
+
+
+@app.get("/audit/journal")
+def audit_journal(limit: int = 50, event_type: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    safe_limit = max(1, min(limit, 200))
+    events = _read_journal_events(limit=safe_limit, event_type=event_type)
+    return {
+        "ok": True,
+        "count": len(events),
+        "limit": safe_limit,
+        "event_type": event_type,
+        "events": events,
     }
 
 
