@@ -4,6 +4,21 @@ extern string ReceiverUrl = "http://127.0.0.1:8010/market/snapshot";
 extern string ReceiverToken = "change-me-token";
 extern bool EnableSender = true;
 
+string IsoTimeUTC()
+{
+   datetime t = TimeGMT();
+   return StringFormat("%04d-%02d-%02dT%02d:%02d:%02dZ",
+      TimeYear(t), TimeMonth(t), TimeDay(t),
+      TimeHour(t), TimeMinute(t), TimeSecond(t));
+}
+
+string CharArrayToStringSafe(char &arr[])
+{
+   if(ArraySize(arr) <= 0)
+      return "";
+   return CharArrayToString(arr, 0, -1);
+}
+
 int OnInit()
 {
    EventSetTimer(30);
@@ -35,7 +50,7 @@ void SendSnapshot()
 
    string body = StringFormat(
       "{\"timestamp_utc\":\"%s\",\"snapshots\":[{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"bid\":%G,\"ask\":%G,\"spread_points\":%d,\"ohlc\":{\"open\":%G,\"high\":%G,\"low\":%G,\"close\":%G},\"volume\":%G}]}",
-      TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS), symbol, bid, ask, spread, open, high, low, close, volume
+      IsoTimeUTC(), symbol, bid, ask, spread, open, high, low, close, volume
    );
 
    string headers = "Authorization: Bearer " + ReceiverToken + "\r\nContent-Type: application/json\r\n";
@@ -45,7 +60,15 @@ void SendSnapshot()
    StringToCharArray(body, data);
    int code = WebRequest("POST", ReceiverUrl, headers, 5000, data, result, resultHeaders);
    if(code == -1)
+   {
       Print("Snapshot send failed: ", GetLastError());
-   else
-      Print("Snapshot sent, HTTP code: ", code);
+      return;
+   }
+
+   string responseBody = CharArrayToStringSafe(result);
+   Print("Snapshot sent, HTTP code: ", code);
+   if(StringLen(responseBody) > 0)
+      Print("Snapshot response body: ", responseBody);
+   if(StringLen(resultHeaders) > 0)
+      Print("Snapshot response headers: ", resultHeaders);
 }
