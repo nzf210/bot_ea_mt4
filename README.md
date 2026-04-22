@@ -123,22 +123,38 @@ Endpoint debug tambahan:
 Sekarang tersedia script publisher untuk agent kamu:
 - `publish_signal.py`
 - `publish_signal_example.json`
+- `simple_signal_generator.py`
 
-Contoh publish:
+Contoh publish manual:
 ```bash
 python publish_signal.py publish_signal_example.json
 ```
 
-Script ini akan:
+Contoh generate + publish sederhana:
+```bash
+python simple_signal_generator.py BUY 3348.50 XAUUSD
+python simple_signal_generator.py SELL 1.26750 GBPUSD
+python simple_signal_generator.py BUY 1.08200 EURUSD
+```
+
+`simple_signal_generator.py` akan:
+- generate signal sederhana dari side + price
+- simpan ke `generated_signal.json`
+- langsung publish ke ai4trade.ai
+
+Script publisher akan:
 - baca file JSON signal lokal
 - ubah ke schema `POST /api/signals/realtime`
 - publish memakai `AI4TRADE_TOKEN`
 
-Env yang dipakai publisher:
+Env yang dipakai publisher/generator:
 ```env
 AI4TRADE_PUBLISH_URL=https://ai4trade.ai/api/signals/realtime
 AI4TRADE_PUBLISH_MARKET=forex
 AI4TRADE_PUBLISH_QUANTITY=0.01
+GENERATOR_SYMBOL=XAUUSD
+GENERATOR_TIMEFRAME=M15
+GENERATOR_CONFIDENCE=0.6
 ```
 
 ## 8. File tambahan production
