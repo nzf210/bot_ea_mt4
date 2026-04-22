@@ -15,6 +15,7 @@ SNAPSHOT_STORE = os.getenv("MARKET_SNAPSHOT_STORE", os.path.join(BASE_DIR, "late
 LOOP_SECONDS = int(os.getenv("AI_SIGNAL_LOOP_SECONDS", "30"))
 STATE_FILE = os.getenv("AI_SIGNAL_STATE_FILE", os.path.join(BASE_DIR, "ai_signal_state.json"))
 PUBLISH_ON_VALID = os.getenv("AI_SIGNAL_PUBLISH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+IGNORE_PUBLISH_ERRORS = os.getenv("AI_SIGNAL_IGNORE_PUBLISH_ERRORS", "true").lower() in {"1", "true", "yes", "on"}
 
 
 def load_state():
@@ -84,9 +85,16 @@ def main():
                         if PUBLISH_ON_VALID:
                             cmd = [sys.executable, str(Path(BASE_DIR) / 'publish_signal.py'), str(out)]
                             r = subprocess.run(cmd, capture_output=True, text=True)
-                            print(r.stdout)
+                            if r.stdout:
+                                print(r.stdout)
                             if r.stderr:
                                 print(r.stderr)
+                            if r.returncode != 0:
+                                message = f"Publish warning for {normalized_symbol}: exit={r.returncode}"
+                                if IGNORE_PUBLISH_ERRORS:
+                                    print(message)
+                                else:
+                                    raise RuntimeError(message)
                         state["last_keys"][normalized_symbol] = key
                         save_state(state)
         except Exception as e:

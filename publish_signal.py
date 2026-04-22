@@ -75,7 +75,8 @@ def main():
         response = client.post(AI4TRADE_PUBLISH_URL, headers=headers, json=payload)
         print(response.status_code)
         print(response.text)
-        response.raise_for_status()
+        if response.is_error:
+            raise SystemExit(0 if os.getenv("AI_SIGNAL_IGNORE_PUBLISH_ERRORS", "true").lower() in {"1", "true", "yes", "on"} else 1)
 
 
 if __name__ == "__main__":
