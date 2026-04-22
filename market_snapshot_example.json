@@ -1,0 +1,47 @@
+{
+  "timestamp_utc": "2026-04-22T12:05:00Z",
+  "snapshots": [
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "M1",
+      "bid": 3348.45,
+      "ask": 3348.60,
+      "spread_points": 15,
+      "ohlc": {
+        "open": 3347.90,
+        "high": 3348.80,
+        "low": 3347.70,
+        "close": 3348.50
+      },
+      "volume": 1280
+    },
+    {
+      "symbol": "GBPUSD",
+      "timeframe": "M1",
+      "bid": 1.26740,
+      "ask": 1.26752,
+      "spread_points": 12,
+      "ohlc": {
+        "open": 1.26710,
+        "high": 1.26770,
+        "low": 1.26690,
+        "close": 1.26745
+      },
+      "volume": 950
+    },
+    {
+      "symbol": "EURUSD",
+      "timeframe": "M1",
+      "bid": 1.08200,
+      "ask": 1.08212,
+      "spread_points": 12,
+      "ohlc": {
+        "open": 1.08170,
+        "high": 1.08220,
+        "low": 1.08150,
+        "close": 1.08205
+      },
+      "volume": 1020
+    }
+  ]
+}

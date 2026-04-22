@@ -157,7 +157,27 @@ GENERATOR_TIMEFRAME=M15
 GENERATOR_CONFIDENCE=0.6
 ```
 
-## 8. File tambahan production
+## 8. RDP local AI snapshot pipeline
+
+File tambahan untuk mode RDP AI-driven:
+- `market_snapshot_receiver.py`
+- `market_snapshot_example.json`
+- `gemini_decider.py`
+- `auto_signal_loop.py`
+- `mt4_snapshot_sender.mq4`
+- `RDP_AI_SETUP.md`
+
+Alur:
+- MT4 kirim snapshot ke `http://127.0.0.1:8010/market/snapshot`
+- receiver simpan snapshot terbaru
+- AI loop baca snapshot tiap 30 detik
+- jika setup valid, signal di-publish ke ai4trade
+
+Catatan:
+- versi saat ini masih memakai prefilter + mock decision layer sebagai placeholder Gemini
+- tahap berikutnya tinggal mengganti `gemini_decider.py` dengan panggilan Gemini Flash API nyata
+
+## 9. File tambahan production
 
 - `requirements.txt` untuk install dependency cepat
 - `start_bridge.bat` untuk start bridge di Windows RDP
@@ -166,7 +186,7 @@ GENERATOR_CONFIDENCE=0.6
 - endpoint `/health/ready` untuk cek readiness bridge
 - `ai4trade_adapter.md` untuk catatan integrasi ai4trade
 
-## 9. News filter gratis
+## 10. News filter gratis
 
 Bridge akan mengambil kalender news gratis dari Forex Factory JSON feed:
 - `https://nfs.faireconomy.media/ff_calendar_thisweek.json`
