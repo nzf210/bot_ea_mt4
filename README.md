@@ -68,9 +68,16 @@ curl "http://127.0.0.1:8000/signal/latest" \
 
 ## 4. Cara kerja
 
+Mode 1, manual/external webhook:
 - Webhook menerima sinyal JSON
 - EA MT4 polling `/signal/latest`
 - Jika symbol cocok, spread aman, belum ada posisi, dan harga masuk entry zone, EA akan `OrderSend`
+
+Mode 2, adapter `ai4trade.ai`:
+- Bridge polling `https://ai4trade.ai/api/signals/feed`
+- signal dari `ai4trade.ai` di-mapping ke format internal MT4 bridge
+- hasil mapping disimpan ke `latest_signal.json`
+- EA MT4 tetap polling `/signal/latest` seperti biasa
 
 ## 5. Guard bawaan
 
@@ -81,15 +88,36 @@ curl "http://127.0.0.1:8000/signal/latest" \
 - max daily loss guard
 - auto news filter untuk berita High Impact USD
 
-## 6. File tambahan production
+## 6. Integrasi ai4trade.ai
+
+Bridge mendukung adapter dasar untuk `ai4trade.ai`.
+
+Tambahkan ke `.env`:
+```env
+AI4TRADE_TOKEN=token-agent-ai4trade
+AI4TRADE_AGENT_ID=3065
+AI4TRADE_FEED_URL=https://ai4trade.ai/api/signals/feed
+AI4TRADE_POLL_SEC=30
+```
+
+Catatan:
+- schema native `ai4trade.ai` tidak sama dengan schema internal bridge
+- adapter akan mencoba mapping signal feed ke format MT4 bridge
+- untuk saat ini adapter hanya cocok untuk signal `XAUUSD` dengan `BUY`/`SELL`
+- SL/TP masih heuristik jika source feed tidak memberi level lengkap
+
+Lihat juga: `ai4trade_adapter.md`
+
+## 7. File tambahan production
 
 - `requirements.txt` untuk install dependency cepat
 - `start_bridge.bat` untuk start bridge di Windows RDP
 - `.env.production.example` sebagai template setting production
 - startup precheck untuk validasi token sebelum server jalan
 - endpoint `/health/ready` untuk cek readiness bridge
+- `ai4trade_adapter.md` untuk catatan integrasi ai4trade
 
-## 7. News filter gratis
+## 8. News filter gratis
 
 Bridge akan mengambil kalender news gratis dari Forex Factory JSON feed:
 - `https://nfs.faireconomy.media/ff_calendar_thisweek.json`

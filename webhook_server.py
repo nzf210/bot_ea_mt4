@@ -23,6 +23,11 @@ APP_TOKEN = os.getenv("BRIDGE_API_TOKEN", "change-me-token")
 SIGNAL_STORE = os.getenv("SIGNAL_STORE", os.path.join(BASE_DIR, "latest_signal.json"))
 JOURNAL_STORE = os.getenv("JOURNAL_STORE", os.path.join(BASE_DIR, "journal.log"))
 NEWS_CACHE_FILE = os.getenv("NEWS_CACHE_FILE", os.path.join(BASE_DIR, "news_cache.json"))
+AI4TRADE_TOKEN = os.getenv("AI4TRADE_TOKEN", "")
+AI4TRADE_AGENT_ID = os.getenv("AI4TRADE_AGENT_ID", "")
+AI4TRADE_FEED_URL = os.getenv("AI4TRADE_FEED_URL", "https://ai4trade.ai/api/signals/feed")
+AI4TRADE_POLL_SEC = int(os.getenv("AI4TRADE_POLL_SEC", "30"))
+AI4TRADE_MIN_CONFIDENCE = float(os.getenv("AI4TRADE_MIN_CONFIDENCE", "0.5"))
 NEWS_CACHE = {
     "latest": [],
     "updated_at": None,
@@ -34,12 +39,15 @@ DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await refresh_news_cache()
+    await refresh_ai4trade_signal_once()
     _run_startup_checks()
-    task = asyncio.create_task(update_news_loop())
+    news_task = asyncio.create_task(update_news_loop())
+    ai4trade_task = asyncio.create_task(update_ai4trade_loop())
     try:
         yield
     finally:
-        task.cancel()
+        news_task.cancel()
+        ai4trade_task.cancel()
 
 app = FastAPI(title="XAUUSD MT4 Bridge", lifespan=lifespan)
 
@@ -84,6 +92,93 @@ async def update_news_loop():
         await refresh_news_cache()
         _run_startup_checks()
         await asyncio.sleep(NEWS_REFRESH_SEC)
+
+async def refresh_ai4trade_signal_once():
+    if not AI4TRADE_TOKEN:
+        return
+    headers = {"Authorization": f"Bearer {AI4TRADE_TOKEN}"}
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{AI4TRADE_FEED_URL}?limit=20&sort=new", headers=headers, timeout=15)
+            response.raise_for_status()
+            payload = response.json()
+            signals = payload.get("signals", []) if isinstance(payload, dict) else []
+            converted = convert_ai4trade_signal(signals)
+            if converted:
+                os.makedirs(os.path.dirname(SIGNAL_STORE), exist_ok=True)
+                with open(SIGNAL_STORE, "w", encoding="utf-8") as f:
+                    json.dump(converted, f, indent=2)
+    except Exception as e:
+        print(f"Error fetching ai4trade signals: {e}")
+
+async def update_ai4trade_loop():
+    while True:
+        await refresh_ai4trade_signal_once()
+        _run_startup_checks()
+        await asyncio.sleep(AI4TRADE_POLL_SEC)
+
+def convert_ai4trade_signal(signals: list):
+    for item in signals:
+        if not isinstance(item, dict):
+            continue
+        if AI4TRADE_AGENT_ID and str(item.get("agent_id")) != str(AI4TRADE_AGENT_ID):
+            continue
+        if item.get("market") not in {"forex", "xau", "gold", "xauusd"}:
+            continue
+        symbol = (item.get("symbol") or "").upper()
+        if symbol != "XAUUSD":
+            continue
+        side = (item.get("side") or item.get("action") or "").upper()
+        if side not in {"BUY", "SELL"}:
+            continue
+        entry_price = item.get("entry_price") or item.get("price")
+        if entry_price is None:
+            continue
+        try:
+            entry_price = float(entry_price)
+        except Exception:
+            continue
+        signal_id = str(item.get("signal_id") or item.get("id") or "")
+        timestamp_utc = item.get("executed_at") or item.get("created_at") or datetime.now(timezone.utc).isoformat()
+        content = item.get("content") or ""
+        confidence = 0.7 if item.get("message_type") == "operation" else AI4TRADE_MIN_CONFIDENCE
+        stop_offset = 5.0
+        tp_offset = 8.0
+        stop_loss = entry_price - stop_offset if side == "BUY" else entry_price + stop_offset
+        tp1 = entry_price + tp_offset if side == "BUY" else entry_price - tp_offset
+        return {
+            "signal_id": f"ai4trade-{signal_id}",
+            "timestamp_utc": timestamp_utc.replace("Z", "+00:00").replace("+00:00", "Z"),
+            "symbol": symbol,
+            "timeframe": "M15",
+            "side": side,
+            "entry_zone": {
+                "min": round(entry_price - 0.3, 2),
+                "max": round(entry_price + 0.3, 2),
+            },
+            "stop_loss": round(stop_loss, 2),
+            "take_profit": [
+                {
+                    "label": "TP1",
+                    "price": round(tp1, 2),
+                    "close_pct": 1.0,
+                }
+            ],
+            "confidence": confidence,
+            "invalidation": content[:200],
+            "max_signal_age_sec": 180,
+            "market_context": {
+                "spread_max_points": 35,
+                "session": "AI4TRADE_FEED",
+                "news_block_minutes": DEFAULT_NEWS_BLOCK_MINUTES,
+            },
+            "received_at": datetime.now(timezone.utc).isoformat(),
+            "status": "READY",
+            "source": "ai4trade.ai",
+            "source_message_type": item.get("message_type"),
+            "source_signal_type": item.get("signal_type"),
+        }
+    return None
 
 def get_active_news_event(block_minutes: int = DEFAULT_NEWS_BLOCK_MINUTES):
     events = NEWS_CACHE.get("latest", [])
@@ -170,6 +265,13 @@ def _run_startup_checks():
         "name": "news_source_or_cache_ready",
         "ok": news_ready,
         "detail": NEWS_CACHE.get("updated_at") or NEWS_CACHE_FILE,
+    })
+
+    ai4trade_ready = (not AI4TRADE_TOKEN) or bool(AI4TRADE_TOKEN and os.path.exists(SIGNAL_STORE))
+    checks.append({
+        "name": "ai4trade_adapter_ready",
+        "ok": ai4trade_ready,
+        "detail": "disabled" if not AI4TRADE_TOKEN else SIGNAL_STORE,
     })
 
     signal_dir = os.path.dirname(SIGNAL_STORE) or BASE_DIR
