@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(__file__)
@@ -235,9 +236,13 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
         _debug("Gemini CLI not found, using fallback")
         return None
     prompt = _gemini_prompt(snapshot, pf)
+    prompt_file = None
     try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False, dir=BASE_DIR) as f:
+            f.write(prompt)
+            prompt_file = f.name
         result = subprocess.run(
-            [gemini_bin, "-m", GEMINI_MODEL, "-p", prompt, "-o", "json"],
+            [gemini_bin, "-m", GEMINI_MODEL, "-p", "@" + prompt_file, "-o", "json"],
             capture_output=True,
             text=True,
             timeout=45,
@@ -285,6 +290,12 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
     except Exception as e:
         _debug(f"Gemini exception {e}, using fallback")
         return None
+    finally:
+        if prompt_file:
+            try:
+                os.remove(prompt_file)
+            except Exception:
+                pass
 
 
 def decide_trade(snapshot: dict):
