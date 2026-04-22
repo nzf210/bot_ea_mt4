@@ -73,20 +73,21 @@ def main():
                 for snap in data.get("snapshots", []):
                     result = decide_with_mock_gemini(snap)
                     if result.get("decision") in {"BUY", "SELL"}:
-                        key = f"{snap['symbol']}:{result['decision']}:{result['entry']}"
-                        if state["last_keys"].get(snap['symbol']) == key:
+                        normalized_symbol = result.get("symbol", snap["symbol"])
+                        key = f"{normalized_symbol}:{result['decision']}:{result['entry']}"
+                        if state["last_keys"].get(normalized_symbol) == key:
                             continue
-                        signal = build_signal(snap['symbol'], result['decision'], result['entry'], result['timeframe'], result['confidence'], result['reason'])
+                        signal = build_signal(normalized_symbol, result['decision'], result['entry'], result['timeframe'], result['confidence'], result['reason'])
                         out = Path(BASE_DIR) / "generated_ai_signal.json"
                         out.write_text(json.dumps(signal, indent=2), encoding='utf-8')
-                        print(f"Generated valid signal for {snap['symbol']}: {result['decision']}")
+                        print(f"Generated valid signal for {normalized_symbol}: {result['decision']}")
                         if PUBLISH_ON_VALID:
                             cmd = [sys.executable, str(Path(BASE_DIR) / 'publish_signal.py'), str(out)]
                             r = subprocess.run(cmd, capture_output=True, text=True)
                             print(r.stdout)
                             if r.stderr:
                                 print(r.stderr)
-                        state["last_keys"][snap['symbol']] = key
+                        state["last_keys"][normalized_symbol] = key
                         save_state(state)
         except Exception as e:
             print(f"AI loop error: {e}")

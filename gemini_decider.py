@@ -6,6 +6,13 @@ BASE_DIR = os.path.dirname(__file__)
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 ALLOWED_SYMBOLS = {s.strip().upper() for s in os.getenv("AI4TRADE_ALLOWED_SYMBOLS", "XAUUSD,GBPUSD,EURUSD").split(",") if s.strip()}
+SYMBOL_ALIASES = {
+    "GOLD": "XAUUSD",
+}
+
+
+def normalize_symbol(symbol: str) -> str:
+    return SYMBOL_ALIASES.get((symbol or "").upper(), (symbol or "").upper())
 
 
 def prefilter(snapshot: dict):
@@ -14,7 +21,7 @@ def prefilter(snapshot: dict):
     close = float(snapshot["ohlc"]["close"])
     open_ = float(snapshot["ohlc"]["open"])
     spread = int(snapshot.get("spread_points", 999))
-    symbol = snapshot["symbol"].upper()
+    symbol = normalize_symbol(snapshot["symbol"])
 
     if symbol not in ALLOWED_SYMBOLS:
         return {"pass": False, "reason": "symbol_not_allowed"}
@@ -41,6 +48,6 @@ def decide_with_mock_gemini(snapshot: dict):
         "confidence": 0.6,
         "reason": pf["reason"],
         "entry": pf["entry"],
-        "symbol": snapshot["symbol"].upper(),
+        "symbol": normalize_symbol(snapshot["symbol"]),
         "timeframe": snapshot.get("timeframe", "M1"),
     }

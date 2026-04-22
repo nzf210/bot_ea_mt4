@@ -13,6 +13,9 @@ APP_TOKEN = os.getenv("BRIDGE_API_TOKEN", "change-me-token")
 RECEIVER_PORT = int(os.getenv("MARKET_RECEIVER_PORT", "8010"))
 SNAPSHOT_STORE = os.getenv("MARKET_SNAPSHOT_STORE", os.path.join(BASE_DIR, "latest_market_snapshot.json"))
 ALLOWED_SYMBOLS = {s.strip().upper() for s in os.getenv("AI4TRADE_ALLOWED_SYMBOLS", "XAUUSD,GBPUSD,EURUSD").split(",") if s.strip()}
+SYMBOL_ALIASES = {
+    "GOLD": "XAUUSD",
+}
 
 app = FastAPI(title="Market Snapshot Receiver")
 
@@ -59,11 +62,13 @@ def receive_snapshot(batch: SnapshotBatch, authorization: Optional[str] = Header
 
     filtered = []
     for snap in batch.snapshots:
-        symbol = snap.symbol.upper()
+        raw_symbol = snap.symbol.upper()
+        symbol = SYMBOL_ALIASES.get(raw_symbol, raw_symbol)
         if symbol not in ALLOWED_SYMBOLS:
             continue
         item = snap.model_dump()
         item["symbol"] = symbol
+        item["raw_symbol"] = raw_symbol
         filtered.append(item)
 
     payload = {
