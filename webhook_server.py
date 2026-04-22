@@ -152,8 +152,13 @@ def _check_token(auth_header: Optional[str]):
         raise HTTPException(status_code=403, detail="invalid token")
 
 
+def _ensure_parent_dir(path: str):
+    parent = os.path.dirname(path) or BASE_DIR
+    os.makedirs(parent, exist_ok=True)
+
+
 def _append_journal(event: dict):
-    os.makedirs(os.path.dirname(JOURNAL_STORE), exist_ok=True)
+    _ensure_parent_dir(JOURNAL_STORE)
     with open(JOURNAL_STORE, "a", encoding="utf-8") as f:
         f.write(json.dumps(event) + "\n")
 
@@ -196,7 +201,7 @@ def _append_ai4trade_dry_run(event: dict):
 
 
 def _save_snapshot_batch(payload: dict):
-    os.makedirs(os.path.dirname(SNAPSHOT_STORE), exist_ok=True)
+    _ensure_parent_dir(SNAPSHOT_STORE)
     with open(SNAPSHOT_STORE, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
@@ -212,17 +217,19 @@ def _load_state():
 
 
 def _save_state(state: dict):
+    _ensure_parent_dir(AI_SIGNAL_STATE_FILE)
     with open(AI_SIGNAL_STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
 
 def _store_signal_payload(payload: dict):
-    os.makedirs(os.path.dirname(SIGNAL_STORE), exist_ok=True)
+    _ensure_parent_dir(SIGNAL_STORE)
     with open(SIGNAL_STORE, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
 
 def _store_generated_signal(payload: dict):
+    _ensure_parent_dir(GENERATED_SIGNAL_STORE)
     with open(GENERATED_SIGNAL_STORE, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
