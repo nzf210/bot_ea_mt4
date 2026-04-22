@@ -15,9 +15,10 @@ datetime lastProcessedAt = 0;
 
 string NormalizeBridgeSymbol(string symbol)
 {
-   symbol = StringUpper(symbol);
-   if(symbol == "GOLD") return "XAUUSD";
-   return symbol;
+   string normalized = symbol;
+   StringToUpper(normalized);
+   if(normalized == "GOLD") return "XAUUSD";
+   return normalized;
 }
 
 bool IsSupportedChartSymbol()
