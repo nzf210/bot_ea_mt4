@@ -5,6 +5,8 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+import httpx
 from dotenv import load_dotenv
 from gemini_decider import decide_trade
 
@@ -16,6 +18,9 @@ LOOP_SECONDS = int(os.getenv("AI_SIGNAL_LOOP_SECONDS", "30"))
 STATE_FILE = os.getenv("AI_SIGNAL_STATE_FILE", os.path.join(BASE_DIR, "ai_signal_state.json"))
 PUBLISH_ON_VALID = os.getenv("AI_SIGNAL_PUBLISH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 IGNORE_PUBLISH_ERRORS = os.getenv("AI_SIGNAL_IGNORE_PUBLISH_ERRORS", "true").lower() in {"1", "true", "yes", "on"}
+LOCAL_BRIDGE_ENABLED = os.getenv("AI_SIGNAL_LOCAL_BRIDGE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+LOCAL_BRIDGE_URL = os.getenv("AI_SIGNAL_LOCAL_BRIDGE_URL", "http://127.0.0.1:8000/signal")
+BRIDGE_TOKEN = os.getenv("BRIDGE_API_TOKEN", "")
 
 
 def load_state():
@@ -64,6 +69,23 @@ def build_signal(symbol: str, decision: str, entry: float, timeframe: str, confi
     }
 
 
+def push_signal_to_local_bridge(signal: dict):
+    if not LOCAL_BRIDGE_ENABLED:
+        return
+    if not BRIDGE_TOKEN:
+        raise RuntimeError("BRIDGE_API_TOKEN is not set for local bridge publish")
+    headers = {
+        "Authorization": f"Bearer {BRIDGE_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    with httpx.Client(timeout=15) as client:
+        response = client.post(LOCAL_BRIDGE_URL, headers=headers, json=signal)
+        print(f"Local bridge status: {response.status_code}")
+        if response.text:
+            print(response.text)
+        response.raise_for_status()
+
+
 def main():
     print(f"AI signal loop started, every {LOOP_SECONDS}s")
     state = load_state()
@@ -82,6 +104,10 @@ def main():
                         out = Path(BASE_DIR) / "generated_ai_signal.json"
                         out.write_text(json.dumps(signal, indent=2), encoding='utf-8')
                         print(f"Generated valid signal for {normalized_symbol}: {result['decision']}")
+                        try:
+                            push_signal_to_local_bridge(signal)
+                        except Exception as e:
+                            raise RuntimeError(f"Local bridge push failed: {e}")
                         if PUBLISH_ON_VALID:
                             cmd = [sys.executable, str(Path(BASE_DIR) / 'publish_signal.py'), str(out)]
                             r = subprocess.run(cmd, capture_output=True, text=True)
