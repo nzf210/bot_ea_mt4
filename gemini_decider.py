@@ -25,6 +25,8 @@ XAU_MIN_CANDLE_RANGE = float(os.getenv("XAU_MIN_CANDLE_RANGE", "0.8"))
 XAU_MAX_CANDLE_RANGE = float(os.getenv("XAU_MAX_CANDLE_RANGE", "8.0"))
 FOREX_MIN_CANDLE_RANGE = float(os.getenv("FOREX_MIN_CANDLE_RANGE", "0.0005"))
 FOREX_MAX_CANDLE_RANGE = float(os.getenv("FOREX_MAX_CANDLE_RANGE", "0.0080"))
+LATE_ENTRY_RANGE_FACTOR = float(os.getenv("LATE_ENTRY_RANGE_FACTOR", "0.75"))
+EXHAUSTION_BODY_RATIO = float(os.getenv("EXHAUSTION_BODY_RATIO", "0.8"))
 GEMINI_OVERRIDE_CONFIDENCE = float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.72"))
 GEMINI_RUNTIME_STATE = {
     "enabled": GEMINI_ENABLED,
@@ -134,6 +136,8 @@ def _recent_structure_gate(snapshot: dict):
 def prefilter(snapshot: dict):
     bid = float(snapshot["bid"])
     ask = float(snapshot["ask"])
+    high = float(snapshot["ohlc"]["high"])
+    low = float(snapshot["ohlc"]["low"])
     close = float(snapshot["ohlc"]["close"])
     open_ = float(snapshot["ohlc"]["open"])
     spread = int(snapshot.get("spread_points", 999))
@@ -141,8 +145,9 @@ def prefilter(snapshot: dict):
 
     if symbol not in ALLOWED_SYMBOLS:
         return {"pass": False, "reason": "symbol_not_allowed"}
-    if spread > get_max_spread(symbol):
-        return {"pass": False, "reason": f"spread_too_high:{spread}>{get_max_spread(symbol)}"}
+    max_spread = get_max_spread(symbol)
+    if spread > max_spread:
+        return {"pass": False, "reason": f"spread_too_high:{spread}>{max_spread}"}
 
     session = _session_gate(snapshot)
     if not session["pass"]:
@@ -166,6 +171,19 @@ def prefilter(snapshot: dict):
         return {"pass": False, "reason": f"bias_conflict:{bias}_vs_{structure['bias']}"}
 
     entry = round((bid + ask) / 2.0, 5 if symbol != "XAUUSD" else 2)
+    candle_range = max(high - low, 0.00001)
+    body_ratio = abs(close - open_) / candle_range
+    if bias == "BUY":
+        late_distance = max(entry - low, 0.0)
+    else:
+        late_distance = max(high - entry, 0.0)
+    late_ratio = late_distance / candle_range
+    if late_ratio >= LATE_ENTRY_RANGE_FACTOR:
+        return {"pass": False, "reason": f"late_entry:{late_ratio:.2f}"}
+    if body_ratio >= EXHAUSTION_BODY_RATIO and late_ratio >= 0.6:
+        return {"pass": False, "reason": f"exhaustion_risk:body={body_ratio:.2f},late={late_ratio:.2f}"}
+
+    spread_quality = max(0.0, 1.0 - (spread / max_spread)) if max_spread > 0 else 0.0
     return {
         "pass": True,
         "bias": bias,
@@ -175,22 +193,41 @@ def prefilter(snapshot: dict):
         "recent_candles_used": len(_extract_recent_candles(snapshot)),
         "session_reason": session['reason'],
         "volatility_reason": volatility['reason'],
+        "spread_quality": round(spread_quality, 4),
+        "late_ratio": round(late_ratio, 4),
+        "body_ratio": round(body_ratio, 4),
     }
 
 
 def _score_prefilter_confidence(snapshot: dict, pf: dict) -> float:
-    confidence = 0.55
+    confidence = 0.5
     reason = str(pf.get("reason", ""))
     if "recent_structure_buy" in reason or "recent_structure_sell" in reason:
-        confidence += 0.1
+        confidence += 0.08
     if "range_ok:" in reason:
         confidence += 0.05
+
+    spread_quality = float(pf.get("spread_quality", 0.0))
+    confidence += min(max(spread_quality, 0.0), 1.0) * 0.1
+
+    late_ratio = float(pf.get("late_ratio", 1.0))
+    confidence += max(0.0, (1.0 - late_ratio)) * 0.08
+
+    body_ratio = float(pf.get("body_ratio", 0.0))
+    if 0.25 <= body_ratio <= 0.7:
+        confidence += 0.07
+    elif body_ratio > 0.85:
+        confidence -= 0.08
+
     candles = _extract_recent_candles(snapshot)
     if len(candles) >= 3:
         same_dir = [_candle_direction(c) for c in candles[:3]]
         if len(set(same_dir)) == 1 and "FLAT" not in same_dir:
             confidence += 0.1
-    return min(confidence, 0.8)
+        elif len(set(same_dir)) == 2:
+            confidence -= 0.04
+
+    return max(0.0, min(confidence, 0.85))
 
 
 def decide_with_mock_gemini(snapshot: dict):
