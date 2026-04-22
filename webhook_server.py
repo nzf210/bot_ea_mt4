@@ -10,6 +10,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
+from gemini_decider import decide_trade, normalize_symbol
+
 BASE_DIR = os.path.dirname(__file__)
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
@@ -23,6 +25,9 @@ APP_TOKEN = os.getenv("BRIDGE_API_TOKEN", "change-me-token")
 SIGNAL_STORE = os.getenv("SIGNAL_STORE", os.path.join(BASE_DIR, "latest_signal.json"))
 JOURNAL_STORE = os.getenv("JOURNAL_STORE", os.path.join(BASE_DIR, "journal.log"))
 NEWS_CACHE_FILE = os.getenv("NEWS_CACHE_FILE", os.path.join(BASE_DIR, "news_cache.json"))
+SNAPSHOT_STORE = os.getenv("MARKET_SNAPSHOT_STORE", os.path.join(BASE_DIR, "latest_market_snapshot.json"))
+GENERATED_SIGNAL_STORE = os.getenv("AI_GENERATED_SIGNAL_STORE", os.path.join(BASE_DIR, "generated_ai_signal.json"))
+AI_SIGNAL_STATE_FILE = os.getenv("AI_SIGNAL_STATE_FILE", os.path.join(BASE_DIR, "ai_signal_state.json"))
 AI4TRADE_TOKEN = os.getenv("AI4TRADE_TOKEN", "")
 AI4TRADE_AGENT_ID = os.getenv("AI4TRADE_AGENT_ID", "")
 AI4TRADE_REQUIRE_AGENT_MATCH = os.getenv("AI4TRADE_REQUIRE_AGENT_MATCH", "true").lower() in {"1", "true", "yes", "on"}
@@ -32,22 +37,91 @@ AI4TRADE_ALLOWED_SYMBOLS = {
 AI4TRADE_FEED_URL = os.getenv("AI4TRADE_FEED_URL", "https://ai4trade.ai/api/signals/feed")
 AI4TRADE_POLL_SEC = int(os.getenv("AI4TRADE_POLL_SEC", "30"))
 AI4TRADE_MIN_CONFIDENCE = float(os.getenv("AI4TRADE_MIN_CONFIDENCE", "0.5"))
+AI4TRADE_RAW_STORE = os.getenv("AI4TRADE_RAW_STORE", os.path.join(BASE_DIR, "ai4trade_last_raw.json"))
+AI4TRADE_DRY_RUN = os.getenv("AI4TRADE_DRY_RUN", "true").lower() in {"1", "true", "yes", "on"}
+AI4TRADE_DRY_RUN_LOG = os.getenv("AI4TRADE_DRY_RUN_LOG", os.path.join(BASE_DIR, "ai4trade_dry_run.log"))
+AI_SIGNAL_PUBLISH_ENABLED = os.getenv("AI_SIGNAL_PUBLISH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+AI_SIGNAL_IGNORE_PUBLISH_ERRORS = os.getenv("AI_SIGNAL_IGNORE_PUBLISH_ERRORS", "true").lower() in {"1", "true", "yes", "on"}
+AI_SIGNAL_PROCESSING_INTERVAL_SEC = float(os.getenv("AI_SIGNAL_PROCESSING_INTERVAL_SEC", "0.1"))
+NEWS_URL = os.getenv("NEWS_CALENDAR_URL", "https://nfs.faireconomy.media/ff_calendar_thisweek.json")
+NEWS_REFRESH_SEC = int(os.getenv("NEWS_REFRESH_SEC", "3600"))
+DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
+
 NEWS_CACHE = {
     "latest": [],
     "updated_at": None,
 }
-AI4TRADE_RAW_STORE = os.getenv("AI4TRADE_RAW_STORE", os.path.join(BASE_DIR, "ai4trade_last_raw.json"))
 AI4TRADE_STATE = {
     "last_fetch_at": None,
     "last_signal_count": 0,
     "last_selected": None,
     "last_error": None,
 }
-AI4TRADE_DRY_RUN = os.getenv("AI4TRADE_DRY_RUN", "true").lower() in {"1", "true", "yes", "on"}
-AI4TRADE_DRY_RUN_LOG = os.getenv("AI4TRADE_DRY_RUN_LOG", os.path.join(BASE_DIR, "ai4trade_dry_run.log"))
-NEWS_URL = os.getenv("NEWS_CALENDAR_URL", "https://nfs.faireconomy.media/ff_calendar_thisweek.json")
-NEWS_REFRESH_SEC = int(os.getenv("NEWS_REFRESH_SEC", "3600"))
-DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
+SNAPSHOT_STATE = {
+    "last_received_at": None,
+    "last_processed_at": None,
+    "last_signal_id": None,
+    "last_decision": None,
+    "last_reason": None,
+    "queue_size": 0,
+    "last_error": None,
+}
+SNAPSHOT_QUEUE: asyncio.Queue = asyncio.Queue()
+
+
+class EntryZone(BaseModel):
+    min: float
+    max: float
+
+
+class TakeProfit(BaseModel):
+    label: str
+    price: float
+    close_pct: float = Field(gt=0, le=1)
+
+
+class MarketContext(BaseModel):
+    spread_max_points: int = 35
+    session: str = "LONDON_NY_OVERLAP"
+    news_block_minutes: int = 30
+
+
+class Signal(BaseModel):
+    signal_id: str
+    timestamp_utc: str
+    symbol: str
+    timeframe: str
+    side: str
+    entry_zone: EntryZone
+    stop_loss: float
+    take_profit: List[TakeProfit]
+    confidence: float = Field(ge=0, le=1)
+    invalidation: Optional[str] = ""
+    max_signal_age_sec: int = 180
+    market_context: MarketContext = MarketContext()
+
+
+class OHLC(BaseModel):
+    open: float
+    high: float
+    low: float
+    close: float
+
+
+class Snapshot(BaseModel):
+    symbol: str
+    timeframe: str = "M1"
+    bid: float
+    ask: float
+    spread_points: int
+    ohlc: OHLC
+    volume: float = 0
+
+
+class SnapshotBatch(BaseModel):
+    timestamp_utc: str
+    snapshots: List[Snapshot]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -56,13 +130,33 @@ async def lifespan(app: FastAPI):
     _run_startup_checks()
     news_task = asyncio.create_task(update_news_loop())
     ai4trade_task = asyncio.create_task(update_ai4trade_loop())
+    snapshot_task = asyncio.create_task(snapshot_worker_loop())
     try:
         yield
     finally:
         news_task.cancel()
         ai4trade_task.cancel()
+        snapshot_task.cancel()
+
 
 app = FastAPI(title="XAUUSD MT4 Bridge", lifespan=lifespan)
+
+
+def _check_token(auth_header: Optional[str]):
+    if not APP_TOKEN or APP_TOKEN == "change-me-token":
+        raise HTTPException(status_code=500, detail="Bridge API Token not configured safely on server")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    token = auth_header.split(" ", 1)[1].strip()
+    if token != APP_TOKEN:
+        raise HTTPException(status_code=403, detail="invalid token")
+
+
+def _append_journal(event: dict):
+    os.makedirs(os.path.dirname(JOURNAL_STORE), exist_ok=True)
+    with open(JOURNAL_STORE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(event) + "\n")
+
 
 def _save_news_cache_to_file():
     try:
@@ -70,6 +164,7 @@ def _save_news_cache_to_file():
             json.dump(NEWS_CACHE, f, indent=2)
     except Exception as e:
         print(f"Error saving news cache: {e}")
+
 
 def _load_news_cache_from_file():
     if not os.path.exists(NEWS_CACHE_FILE):
@@ -83,28 +178,6 @@ def _load_news_cache_from_file():
     except Exception as e:
         print(f"Error loading news cache: {e}")
 
-async def refresh_news_cache():
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(NEWS_URL, timeout=10)
-            response.raise_for_status()
-            news_data = response.json()
-            usd_high = [
-                n for n in news_data
-                if n.get("country") == "USD" and n.get("impact") == "High"
-            ]
-            NEWS_CACHE["latest"] = usd_high
-            NEWS_CACHE["updated_at"] = datetime.now(timezone.utc).isoformat()
-            _save_news_cache_to_file()
-    except Exception as e:
-        print(f"Error fetching news: {e}")
-        _load_news_cache_from_file()
-
-async def update_news_loop():
-    while True:
-        await refresh_news_cache()
-        _run_startup_checks()
-        await asyncio.sleep(NEWS_REFRESH_SEC)
 
 def _save_ai4trade_raw(payload):
     try:
@@ -113,6 +186,7 @@ def _save_ai4trade_raw(payload):
     except Exception as e:
         print(f"Error saving ai4trade raw payload: {e}")
 
+
 def _append_ai4trade_dry_run(event: dict):
     try:
         with open(AI4TRADE_DRY_RUN_LOG, "a", encoding="utf-8") as f:
@@ -120,35 +194,84 @@ def _append_ai4trade_dry_run(event: dict):
     except Exception as e:
         print(f"Error writing ai4trade dry run log: {e}")
 
-async def refresh_ai4trade_signal_once():
-    if not AI4TRADE_TOKEN:
-        return
-    headers = {"Authorization": f"Bearer {AI4TRADE_TOKEN}"}
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{AI4TRADE_FEED_URL}?limit=20&sort=new", headers=headers, timeout=15)
-            response.raise_for_status()
-            payload = response.json()
-            _save_ai4trade_raw(payload)
-            signals = payload.get("signals", []) if isinstance(payload, dict) else []
-            converted = convert_ai4trade_signal(signals)
-            AI4TRADE_STATE["last_fetch_at"] = datetime.now(timezone.utc).isoformat()
-            AI4TRADE_STATE["last_signal_count"] = len(signals)
-            AI4TRADE_STATE["last_selected"] = converted.get("signal_id") if converted else None
-            AI4TRADE_STATE["last_error"] = None
-            if converted and not AI4TRADE_DRY_RUN:
-                os.makedirs(os.path.dirname(SIGNAL_STORE), exist_ok=True)
-                with open(SIGNAL_STORE, "w", encoding="utf-8") as f:
-                    json.dump(converted, f, indent=2)
-    except Exception as e:
-        AI4TRADE_STATE["last_error"] = str(e)
-        print(f"Error fetching ai4trade signals: {e}")
 
-async def update_ai4trade_loop():
-    while True:
-        await refresh_ai4trade_signal_once()
-        _run_startup_checks()
-        await asyncio.sleep(AI4TRADE_POLL_SEC)
+def _save_snapshot_batch(payload: dict):
+    os.makedirs(os.path.dirname(SNAPSHOT_STORE), exist_ok=True)
+    with open(SNAPSHOT_STORE, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _load_state():
+    if not os.path.exists(AI_SIGNAL_STATE_FILE):
+        return {"last_keys": {}}
+    try:
+        with open(AI_SIGNAL_STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"last_keys": {}}
+
+
+def _save_state(state: dict):
+    with open(AI_SIGNAL_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+
+
+def _store_signal_payload(payload: dict):
+    os.makedirs(os.path.dirname(SIGNAL_STORE), exist_ok=True)
+    with open(SIGNAL_STORE, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _store_generated_signal(payload: dict):
+    with open(GENERATED_SIGNAL_STORE, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, confidence: float, reason: str):
+    if symbol == "XAUUSD":
+        zone = 0.3
+        sl_offset = 5.0
+        tp1_offset = 8.0
+        tp2_offset = 12.0
+        digits = 2
+        spread_max_points = 120
+    else:
+        zone = 0.0005
+        sl_offset = 0.0030
+        tp1_offset = 0.0050
+        tp2_offset = 0.0080
+        digits = 5
+        spread_max_points = 35
+
+    sl = entry - sl_offset if decision == "BUY" else entry + sl_offset
+    tp1 = entry + tp1_offset if decision == "BUY" else entry - tp1_offset
+    tp2 = entry + tp2_offset if decision == "BUY" else entry - tp2_offset
+
+    return {
+        "signal_id": f"local-ai-{symbol.lower()}-{int(datetime.now(timezone.utc).timestamp())}",
+        "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "side": decision,
+        "entry_zone": {"min": round(entry - zone, digits), "max": round(entry + zone, digits)},
+        "stop_loss": round(sl, digits),
+        "take_profit": [
+            {"label": "TP1", "price": round(tp1, digits), "close_pct": 0.5},
+            {"label": "TP2", "price": round(tp2, digits), "close_pct": 0.5},
+        ],
+        "confidence": confidence,
+        "invalidation": f"AI loop: {reason}",
+        "max_signal_age_sec": 180,
+        "market_context": {
+            "spread_max_points": spread_max_points,
+            "session": "LOCAL_AI_QUEUE",
+            "news_block_minutes": DEFAULT_NEWS_BLOCK_MINUTES,
+        },
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "status": "READY",
+        "source": "local_gemini_queue",
+    }
+
 
 def _infer_price_levels(symbol: str, side: str, entry_price: float, content: str):
     symbol = (symbol or "").upper()
@@ -181,6 +304,7 @@ def _infer_price_levels(symbol: str, side: str, entry_price: float, content: str
     tp1 = entry_price + tp_offset if side == "BUY" else entry_price - tp_offset
     return round(stop_loss, 5 if symbol != "XAUUSD" else 2), round(tp1, 5 if symbol != "XAUUSD" else 2)
 
+
 def convert_ai4trade_signal(signals: list):
     for item in signals:
         trace = {
@@ -209,7 +333,7 @@ def convert_ai4trade_signal(signals: list):
             trace["reason"] = "unsupported_market"
             _append_ai4trade_dry_run(trace)
             continue
-        symbol = (item.get("symbol") or "").upper()
+        symbol = normalize_symbol(item.get("symbol") or "")
         if symbol not in AI4TRADE_ALLOWED_SYMBOLS:
             trace["decision"] = "reject"
             trace["reason"] = "unsupported_symbol"
@@ -280,6 +404,145 @@ def convert_ai4trade_signal(signals: list):
         return converted
     return None
 
+
+async def refresh_news_cache():
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(NEWS_URL, timeout=10)
+            response.raise_for_status()
+            news_data = response.json()
+            usd_high = [
+                n for n in news_data
+                if n.get("country") == "USD" and n.get("impact") == "High"
+            ]
+            NEWS_CACHE["latest"] = usd_high
+            NEWS_CACHE["updated_at"] = datetime.now(timezone.utc).isoformat()
+            _save_news_cache_to_file()
+    except Exception as e:
+        print(f"Error fetching news: {e}")
+        _load_news_cache_from_file()
+
+
+async def update_news_loop():
+    while True:
+        await refresh_news_cache()
+        _run_startup_checks()
+        await asyncio.sleep(NEWS_REFRESH_SEC)
+
+
+async def refresh_ai4trade_signal_once():
+    if not AI4TRADE_TOKEN:
+        return
+    headers = {"Authorization": f"Bearer {AI4TRADE_TOKEN}"}
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{AI4TRADE_FEED_URL}?limit=20&sort=new", headers=headers, timeout=15)
+            response.raise_for_status()
+            payload = response.json()
+            _save_ai4trade_raw(payload)
+            signals = payload.get("signals", []) if isinstance(payload, dict) else []
+            converted = convert_ai4trade_signal(signals)
+            AI4TRADE_STATE["last_fetch_at"] = datetime.now(timezone.utc).isoformat()
+            AI4TRADE_STATE["last_signal_count"] = len(signals)
+            AI4TRADE_STATE["last_selected"] = converted.get("signal_id") if converted else None
+            AI4TRADE_STATE["last_error"] = None
+            if converted and not AI4TRADE_DRY_RUN:
+                _store_signal_payload(converted)
+    except Exception as e:
+        AI4TRADE_STATE["last_error"] = str(e)
+        print(f"Error fetching ai4trade signals: {e}")
+
+
+async def update_ai4trade_loop():
+    while True:
+        await refresh_ai4trade_signal_once()
+        _run_startup_checks()
+        await asyncio.sleep(AI4TRADE_POLL_SEC)
+
+
+async def snapshot_worker_loop():
+    state = _load_state()
+    while True:
+        payload = await SNAPSHOT_QUEUE.get()
+        try:
+            for snap in payload.get("snapshots", []):
+                result = decide_trade(snap)
+                SNAPSHOT_STATE["last_processed_at"] = datetime.now(timezone.utc).isoformat()
+                SNAPSHOT_STATE["last_decision"] = result.get("decision")
+                SNAPSHOT_STATE["last_reason"] = result.get("reason")
+                if result.get("decision") not in {"BUY", "SELL"}:
+                    continue
+                normalized_symbol = result.get("symbol", snap["symbol"])
+                key = f"{normalized_symbol}:{result['decision']}:{result['entry']}"
+                if state.get("last_keys", {}).get(normalized_symbol) == key:
+                    continue
+                signal = _build_signal(normalized_symbol, result["decision"], result["entry"], result["timeframe"], result["confidence"], result["reason"])
+                _store_generated_signal(signal)
+                _store_signal_payload(signal)
+                state.setdefault("last_keys", {})[normalized_symbol] = key
+                _save_state(state)
+                SNAPSHOT_STATE["last_signal_id"] = signal["signal_id"]
+                _append_journal({
+                    "event_id": str(uuid.uuid4()),
+                    "type": "signal_generated_from_snapshot",
+                    "at": datetime.now(timezone.utc).isoformat(),
+                    "signal_id": signal["signal_id"],
+                    "symbol": signal["symbol"],
+                    "side": signal["side"],
+                    "confidence": signal["confidence"],
+                    "reason": signal["invalidation"],
+                })
+                if AI_SIGNAL_PUBLISH_ENABLED:
+                    await _publish_signal_to_ai4trade(signal)
+        except Exception as e:
+            SNAPSHOT_STATE["last_error"] = str(e)
+            print(f"Snapshot worker error: {e}")
+        finally:
+            SNAPSHOT_STATE["queue_size"] = SNAPSHOT_QUEUE.qsize()
+            SNAPSHOT_QUEUE.task_done()
+            if AI_SIGNAL_PROCESSING_INTERVAL_SEC > 0:
+                await asyncio.sleep(AI_SIGNAL_PROCESSING_INTERVAL_SEC)
+
+
+async def _publish_signal_to_ai4trade(signal: dict):
+    if not AI4TRADE_TOKEN:
+        return
+    symbol = str(signal.get("symbol", "")).upper()
+    side = str(signal.get("side", signal.get("action", ""))).lower()
+    entry_zone = signal.get("entry_zone") or {}
+    price = (float(entry_zone.get("min", 0)) + float(entry_zone.get("max", 0))) / 2.0
+    content_parts = []
+    for key in ["timeframe", "stop_loss", "confidence", "invalidation"]:
+        if signal.get(key) is not None:
+            content_parts.append(f"{key}={signal.get(key)}")
+    take_profit = signal.get("take_profit")
+    if isinstance(take_profit, list):
+        for idx, tp in enumerate(take_profit, start=1):
+            if isinstance(tp, dict) and tp.get("price") is not None:
+                content_parts.append(f"TP{idx}={tp.get('price')}")
+    payload = {
+        "market": "forex",
+        "action": side,
+        "symbol": symbol,
+        "price": float(price),
+        "quantity": 0.01,
+        "content": " | ".join(content_parts),
+        "executed_at": signal.get("timestamp_utc"),
+        "token_id": signal.get("token_id"),
+        "outcome": signal.get("outcome"),
+    }
+    headers = {
+        "Authorization": f"Bearer {AI4TRADE_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(os.getenv("AI4TRADE_PUBLISH_URL", "https://ai4trade.ai/api/signals/realtime"), headers=headers, json=payload)
+        print(response.status_code)
+        print(response.text)
+        if response.is_error and not AI_SIGNAL_IGNORE_PUBLISH_ERRORS:
+            response.raise_for_status()
+
+
 def get_active_news_event(block_minutes: int = DEFAULT_NEWS_BLOCK_MINUTES):
     events = NEWS_CACHE.get("latest", [])
     now = datetime.now(timezone.utc)
@@ -299,96 +562,21 @@ def get_active_news_event(block_minutes: int = DEFAULT_NEWS_BLOCK_MINUTES):
             continue
     return None
 
-class EntryZone(BaseModel):
-    min: float
-    max: float
-
-class TakeProfit(BaseModel):
-    label: str
-    price: float
-    close_pct: float = Field(gt=0, le=1)
-
-class MarketContext(BaseModel):
-    spread_max_points: int = 35
-    session: str = "LONDON_NY_OVERLAP"
-    news_block_minutes: int = 30
-
-class Signal(BaseModel):
-    signal_id: str
-    timestamp_utc: str
-    symbol: str
-    timeframe: str
-    side: str
-    entry_zone: EntryZone
-    stop_loss: float
-    take_profit: List[TakeProfit]
-    confidence: float = Field(ge=0, le=1)
-    invalidation: Optional[str] = ""
-    max_signal_age_sec: int = 180
-    market_context: MarketContext = MarketContext()
-
-
-def _check_token(auth_header: Optional[str]):
-    if not APP_TOKEN or APP_TOKEN == "change-me-token":
-        raise HTTPException(status_code=500, detail="Bridge API Token not configured safely on server")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing bearer token")
-    token = auth_header.split(" ", 1)[1].strip()
-    if token != APP_TOKEN:
-        raise HTTPException(status_code=403, detail="invalid token")
-
-
-def _append_journal(event: dict):
-    os.makedirs(os.path.dirname(JOURNAL_STORE), exist_ok=True)
-    with open(JOURNAL_STORE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(event) + "\n")
 
 def _run_startup_checks():
     checks = []
-
     env_exists = os.path.exists(os.path.join(BASE_DIR, ".env"))
-    checks.append({
-        "name": "env_file_present",
-        "ok": env_exists,
-        "detail": os.path.join(BASE_DIR, ".env"),
-    })
-
+    checks.append({"name": "env_file_present", "ok": env_exists, "detail": os.path.join(BASE_DIR, ".env")})
     strong_token = bool(APP_TOKEN and APP_TOKEN != "change-me-token" and len(APP_TOKEN) >= 16)
-    checks.append({
-        "name": "bridge_token_safe",
-        "ok": strong_token,
-        "detail": "BRIDGE_API_TOKEN must be set and not default",
-    })
-
+    checks.append({"name": "bridge_token_safe", "ok": strong_token, "detail": "BRIDGE_API_TOKEN must be set and not default"})
     news_ready = bool(NEWS_CACHE.get("updated_at") or os.path.exists(NEWS_CACHE_FILE))
-    checks.append({
-        "name": "news_source_or_cache_ready",
-        "ok": news_ready,
-        "detail": NEWS_CACHE.get("updated_at") or NEWS_CACHE_FILE,
-    })
-
-    ai4trade_ready = (not AI4TRADE_TOKEN) or bool(AI4TRADE_TOKEN and os.path.exists(SIGNAL_STORE))
-    checks.append({
-        "name": "ai4trade_adapter_ready",
-        "ok": ai4trade_ready,
-        "detail": "disabled" if not AI4TRADE_TOKEN else SIGNAL_STORE,
-    })
-
+    checks.append({"name": "news_source_or_cache_ready", "ok": news_ready, "detail": NEWS_CACHE.get("updated_at") or NEWS_CACHE_FILE})
     signal_dir = os.path.dirname(SIGNAL_STORE) or BASE_DIR
     journal_dir = os.path.dirname(JOURNAL_STORE) or BASE_DIR
-    signal_writable = os.path.isdir(signal_dir) and os.access(signal_dir, os.W_OK)
-    journal_writable = os.path.isdir(journal_dir) and os.access(journal_dir, os.W_OK)
-    checks.append({
-        "name": "signal_store_writable",
-        "ok": signal_writable,
-        "detail": signal_dir,
-    })
-    checks.append({
-        "name": "journal_store_writable",
-        "ok": journal_writable,
-        "detail": journal_dir,
-    })
-
+    snapshot_dir = os.path.dirname(SNAPSHOT_STORE) or BASE_DIR
+    checks.append({"name": "signal_store_writable", "ok": os.path.isdir(signal_dir) and os.access(signal_dir, os.W_OK), "detail": signal_dir})
+    checks.append({"name": "journal_store_writable", "ok": os.path.isdir(journal_dir) and os.access(journal_dir, os.W_OK), "detail": journal_dir})
+    checks.append({"name": "snapshot_store_writable", "ok": os.path.isdir(snapshot_dir) and os.access(snapshot_dir, os.W_OK), "detail": snapshot_dir})
     startup_ready = all(item["ok"] for item in checks)
     STARTUP_STATUS["ready"] = startup_ready
     STARTUP_STATUS["checks"] = checks
@@ -403,15 +591,63 @@ def health():
         "service": "xauusd-mt4-bridge",
         "ready": STARTUP_STATUS.get("ready", False),
         "checked_at": STARTUP_STATUS.get("checked_at"),
+        "snapshot_queue": {
+            "queue_size": SNAPSHOT_QUEUE.qsize(),
+            "last_received_at": SNAPSHOT_STATE.get("last_received_at"),
+            "last_processed_at": SNAPSHOT_STATE.get("last_processed_at"),
+            "last_signal_id": SNAPSHOT_STATE.get("last_signal_id"),
+            "last_decision": SNAPSHOT_STATE.get("last_decision"),
+            "last_reason": SNAPSHOT_STATE.get("last_reason"),
+            "last_error": SNAPSHOT_STATE.get("last_error"),
+        },
     }
+
 
 @app.get("/health/ready")
 def health_ready(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-    return {
-        "ok": True,
-        "startup": STARTUP_STATUS,
+    return {"ok": True, "startup": STARTUP_STATUS, "snapshot_state": SNAPSHOT_STATE}
+
+
+@app.post("/market/snapshot")
+async def receive_snapshot(batch: SnapshotBatch, authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    try:
+        datetime.fromisoformat(batch.timestamp_utc.replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid timestamp_utc")
+
+    filtered = []
+    for snap in batch.snapshots:
+        raw_symbol = snap.symbol.upper()
+        symbol = normalize_symbol(raw_symbol)
+        if symbol not in AI4TRADE_ALLOWED_SYMBOLS:
+            continue
+        item = snap.model_dump()
+        item["symbol"] = symbol
+        item["raw_symbol"] = raw_symbol
+        filtered.append(item)
+
+    payload = {
+        "timestamp_utc": batch.timestamp_utc,
+        "snapshots": filtered,
+        "received_at": datetime.now(timezone.utc).isoformat(),
     }
+    _save_snapshot_batch(payload)
+    SNAPSHOT_STATE["last_received_at"] = payload["received_at"]
+    await SNAPSHOT_QUEUE.put(payload)
+    SNAPSHOT_STATE["queue_size"] = SNAPSHOT_QUEUE.qsize()
+    return {"ok": True, "stored": len(filtered), "queued": len(filtered), "symbols": [x["symbol"] for x in filtered]}
+
+
+@app.get("/market/snapshot/latest")
+def latest_snapshot(authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    if not os.path.exists(SNAPSHOT_STORE):
+        return {"ok": True, "snapshot": None}
+    with open(SNAPSHOT_STORE, "r", encoding="utf-8") as f:
+        return {"ok": True, "snapshot": json.load(f), "state": SNAPSHOT_STATE}
+
 
 @app.get("/ai4trade/status")
 def ai4trade_status(authorization: Optional[str] = Header(default=None)):
@@ -428,6 +664,7 @@ def ai4trade_status(authorization: Optional[str] = Header(default=None)):
         "raw_store": AI4TRADE_RAW_STORE,
     }
 
+
 @app.get("/ai4trade/raw")
 def ai4trade_raw(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
@@ -435,6 +672,7 @@ def ai4trade_raw(authorization: Optional[str] = Header(default=None)):
         return {"ok": True, "payload": None}
     with open(AI4TRADE_RAW_STORE, "r", encoding="utf-8") as f:
         return {"ok": True, "payload": json.load(f)}
+
 
 @app.get("/ai4trade/dry-run")
 def ai4trade_dry_run(authorization: Optional[str] = Header(default=None)):
@@ -450,6 +688,7 @@ def ai4trade_dry_run(authorization: Optional[str] = Header(default=None)):
         except Exception:
             continue
     return {"ok": True, "enabled": AI4TRADE_DRY_RUN, "events": events}
+
 
 @app.get("/news/status")
 def news_status(authorization: Optional[str] = Header(default=None)):
@@ -467,34 +706,26 @@ def news_status(authorization: Optional[str] = Header(default=None)):
 @app.post("/signal")
 def publish_signal(signal: Signal, authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-
     if signal.symbol.upper() != "XAUUSD":
         raise HTTPException(status_code=400, detail="only XAUUSD supported")
     if signal.side.upper() not in {"BUY", "SELL"}:
         raise HTTPException(status_code=400, detail="side must be BUY or SELL")
     if len(signal.take_profit) == 0:
         raise HTTPException(status_code=400, detail="take_profit required")
-
     now = datetime.now(timezone.utc)
     try:
         ts = datetime.fromisoformat(signal.timestamp_utc.replace("Z", "+00:00"))
     except Exception:
         raise HTTPException(status_code=400, detail="invalid timestamp_utc")
-
     age = (now - ts).total_seconds()
     if age > signal.max_signal_age_sec:
         raise HTTPException(status_code=400, detail="signal too old")
-
     payload = signal.model_dump()
     payload["side"] = payload["side"].upper()
     payload["symbol"] = payload["symbol"].upper()
     payload["received_at"] = now.isoformat()
     payload["status"] = "READY"
-
-    os.makedirs(os.path.dirname(SIGNAL_STORE), exist_ok=True)
-    with open(SIGNAL_STORE, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
-
+    _store_signal_payload(payload)
     _append_journal({
         "event_id": str(uuid.uuid4()),
         "type": "signal_received",
@@ -504,40 +735,24 @@ def publish_signal(signal: Signal, authorization: Optional[str] = Header(default
         "side": signal.side,
         "confidence": signal.confidence,
     })
-
     return {"ok": True, "stored": True, "signal_id": signal.signal_id}
 
 
 @app.get("/signal/latest")
 def latest_signal(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-    
     active_news = get_active_news_event(DEFAULT_NEWS_BLOCK_MINUTES)
     news_blocked = active_news is not None
-
     if not os.path.exists(SIGNAL_STORE):
-        return {
-            "ok": True,
-            "signal": None,
-            "news_blocked": news_blocked,
-            "active_news": active_news,
-            "news_updated_at": NEWS_CACHE.get("updated_at"),
-        }
-
+        return {"ok": True, "signal": None, "news_blocked": news_blocked, "active_news": active_news, "news_updated_at": NEWS_CACHE.get("updated_at")}
     with open(SIGNAL_STORE, "r", encoding="utf-8") as f:
         data = json.load(f)
-        block_minutes = data.get("market_context", {}).get("news_block_minutes", DEFAULT_NEWS_BLOCK_MINUTES)
-        active_news = get_active_news_event(block_minutes)
-        news_blocked = active_news is not None
-        if news_blocked:
-            data["status"] = "BLOCKED_BY_NEWS"
-        return {
-            "ok": True,
-            "signal": data,
-            "news_blocked": news_blocked,
-            "active_news": active_news,
-            "news_updated_at": NEWS_CACHE.get("updated_at"),
-        }
+    block_minutes = data.get("market_context", {}).get("news_block_minutes", DEFAULT_NEWS_BLOCK_MINUTES)
+    active_news = get_active_news_event(block_minutes)
+    news_blocked = active_news is not None
+    if news_blocked:
+        data["status"] = "BLOCKED_BY_NEWS"
+    return {"ok": True, "signal": data, "news_blocked": news_blocked, "active_news": active_news, "news_updated_at": NEWS_CACHE.get("updated_at")}
 
 
 @app.post("/execution/report")
