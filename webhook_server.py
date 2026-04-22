@@ -75,6 +75,10 @@ SNAPSHOT_STATE = {
     "last_no_trade_reason": None,
     "last_no_trade_symbol": None,
     "last_snapshot_timeframe": None,
+    "last_execution_at": None,
+    "last_execution_signal_id": None,
+    "last_execution_type": None,
+    "last_execution_ticket": None,
     "queue_size": 0,
     "last_error": None,
 }
@@ -561,9 +565,13 @@ async def snapshot_worker_loop():
                 if _is_signal_fresh(current_signal):
                     current_symbol = current_signal.get("symbol")
                     current_side = current_signal.get("side")
+                    current_status = current_signal.get("status")
                     if current_symbol == normalized_symbol and current_side == result.get("decision"):
+                        reject_reason = "active_signal_same_direction"
+                        if current_status == "OPEN":
+                            reject_reason = "position_open_same_direction"
                         SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
-                        SNAPSHOT_STATE["last_no_trade_reason"] = "active_signal_same_direction"
+                        SNAPSHOT_STATE["last_no_trade_reason"] = reject_reason
                         SNAPSHOT_STATE["last_no_trade_symbol"] = normalized_symbol
                         _append_journal({
                             "event_id": str(uuid.uuid4()),
@@ -571,7 +579,7 @@ async def snapshot_worker_loop():
                             "at": datetime.now(timezone.utc).isoformat(),
                             "symbol": normalized_symbol,
                             "timeframe": snap.get("timeframe"),
-                            "reason": "active_signal_same_direction",
+                            "reason": reject_reason,
                             "decision_source": result.get("decision_source", "unknown"),
                         })
                         continue
@@ -883,7 +891,26 @@ def latest_signal(authorization: Optional[str] = Header(default=None)):
 @app.post("/execution/report")
 def execution_report(payload: dict, authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-    payload["type"] = "execution_report"
-    payload["at"] = datetime.now(timezone.utc).isoformat()
-    _append_journal(payload)
+    report_kind = str(payload.get("type", "")).upper()
+    event = dict(payload)
+    event["event_type"] = "execution_report"
+    event["at"] = datetime.now(timezone.utc).isoformat()
+    _append_journal(event)
+
+    SNAPSHOT_STATE["last_execution_at"] = event["at"]
+    SNAPSHOT_STATE["last_execution_signal_id"] = payload.get("signal_id")
+    SNAPSHOT_STATE["last_execution_type"] = report_kind
+    SNAPSHOT_STATE["last_execution_ticket"] = payload.get("ticket")
+
+    current_signal = _load_current_signal()
+    if current_signal and current_signal.get("signal_id") == payload.get("signal_id"):
+        if report_kind == "OPEN":
+            current_signal["status"] = "OPEN"
+            current_signal["executed_ticket"] = payload.get("ticket")
+            current_signal["executed_at"] = event["at"]
+            _store_signal_payload(current_signal)
+        elif report_kind in {"CLOSE", "CLOSED", "EXIT"}:
+            current_signal["status"] = "CLOSED"
+            current_signal["closed_at"] = event["at"]
+            _store_signal_payload(current_signal)
     return {"ok": True}
