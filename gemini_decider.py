@@ -27,6 +27,8 @@ FOREX_MIN_CANDLE_RANGE = float(os.getenv("FOREX_MIN_CANDLE_RANGE", "0.0005"))
 FOREX_MAX_CANDLE_RANGE = float(os.getenv("FOREX_MAX_CANDLE_RANGE", "0.0080"))
 LATE_ENTRY_RANGE_FACTOR = float(os.getenv("LATE_ENTRY_RANGE_FACTOR", "0.75"))
 EXHAUSTION_BODY_RATIO = float(os.getenv("EXHAUSTION_BODY_RATIO", "0.8"))
+DETERMINISTIC_SCORE_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_TRADE_THRESHOLD", "0.58"))
+DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD", "0.48"))
 GEMINI_OVERRIDE_CONFIDENCE = float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.72"))
 GEMINI_RUNTIME_STATE = {
     "enabled": GEMINI_ENABLED,
@@ -230,17 +232,35 @@ def _score_prefilter_confidence(snapshot: dict, pf: dict) -> float:
     return max(0.0, min(confidence, 0.85))
 
 
+def _deterministic_score(snapshot: dict, pf: dict) -> float:
+    score = _score_prefilter_confidence(snapshot, pf)
+    spread_quality = float(pf.get("spread_quality", 0.0))
+    late_ratio = float(pf.get("late_ratio", 1.0))
+    body_ratio = float(pf.get("body_ratio", 0.0))
+    score += spread_quality * 0.06
+    score += max(0.0, 1.0 - late_ratio) * 0.05
+    if 0.3 <= body_ratio <= 0.7:
+        score += 0.03
+    elif body_ratio > 0.85:
+        score -= 0.06
+    return max(0.0, min(score, 0.95))
+
+
 def decide_with_mock_gemini(snapshot: dict):
     pf = prefilter(snapshot)
     if not pf["pass"]:
         return {"decision": "NO_TRADE", "confidence": 0.0, "reason": pf["reason"]}
+    score = _deterministic_score(snapshot, pf)
+    decision = pf["bias"] if score >= DETERMINISTIC_SCORE_TRADE_THRESHOLD else "NO_TRADE"
+    reason = pf["reason"] if decision != "NO_TRADE" else f"deterministic_score_too_low:{score:.2f}|{pf['reason']}"
     return {
-        "decision": pf["bias"],
-        "confidence": _score_prefilter_confidence(snapshot, pf),
-        "reason": pf["reason"],
+        "decision": decision,
+        "confidence": score,
+        "reason": reason,
         "entry": pf["entry"],
         "symbol": normalize_symbol(snapshot["symbol"]),
         "timeframe": snapshot.get("timeframe", "M1"),
+        "deterministic_score": score,
     }
 
 
@@ -395,26 +415,45 @@ def decide_trade(snapshot: dict):
 
     fallback = decide_with_mock_gemini(snapshot)
     fallback["decision_source"] = "mock"
+    deterministic_score = float(fallback.get("deterministic_score", fallback.get("confidence", 0.0)))
     GEMINI_RUNTIME_STATE["last_decision_source"] = "mock"
     gemini_result = _try_decide_with_gemini(snapshot, pf)
     if gemini_result is not None:
         if gemini_result.get("entry") is None:
             gemini_result["entry"] = pf["entry"]
+        evaluation = gemini_result.get("evaluation") if isinstance(gemini_result.get("evaluation"), dict) else {}
+        fusion_score = deterministic_score
+        if evaluation:
+            trend_alignment = float(evaluation.get("trend_alignment", 0.5))
+            entry_quality = float(evaluation.get("entry_quality", 0.5))
+            exhaustion_risk = float(evaluation.get("exhaustion_risk", 0.5))
+            noise_risk = float(evaluation.get("noise_risk", 0.5))
+            fusion_score = max(0.0, min(0.95, deterministic_score + (trend_alignment * 0.06) + (entry_quality * 0.06) - (exhaustion_risk * 0.05) - (noise_risk * 0.04)))
+        gemini_result["fusion_score"] = fusion_score
+
         if gemini_result.get("decision") == fallback.get("decision"):
-            gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), float(fallback.get("confidence", 0.0)))
-            evaluation = gemini_result.get("evaluation") if isinstance(gemini_result.get("evaluation"), dict) else {}
-            if evaluation:
-                entry_quality = float(evaluation.get("entry_quality", 0.5))
-                exhaustion_risk = float(evaluation.get("exhaustion_risk", 0.5))
-                noise_risk = float(evaluation.get("noise_risk", 0.5))
-                gemini_result["confidence"] = max(0.0, min(0.95, gemini_result["confidence"] + (entry_quality * 0.06) - (exhaustion_risk * 0.05) - (noise_risk * 0.04)))
+            gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), fusion_score)
+            if fusion_score < DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD:
+                _debug(f"Hybrid fusion downgraded to NO_TRADE score={fusion_score}")
+                return {
+                    "decision": "NO_TRADE",
+                    "confidence": fusion_score,
+                    "reason": f"fusion_score_too_low:{fusion_score:.2f}|{gemini_result.get('reason')}",
+                    "entry": gemini_result.get("entry"),
+                    "symbol": gemini_result.get("symbol"),
+                    "timeframe": gemini_result.get("timeframe"),
+                    "decision_source": "fusion",
+                    "evaluation": evaluation,
+                    "fusion_score": fusion_score,
+                }
             _debug(f"Hybrid decision aligned with fallback decision={gemini_result.get('decision')}")
             return gemini_result
         if gemini_result.get("decision") == "NO_TRADE":
             _debug("Hybrid decision downgraded to NO_TRADE by Gemini")
             return gemini_result
-        if float(gemini_result.get("confidence", 0.0)) >= GEMINI_OVERRIDE_CONFIDENCE:
+        if fusion_score >= GEMINI_OVERRIDE_CONFIDENCE and float(gemini_result.get("confidence", 0.0)) >= MIN_CONFIDENCE:
             gemini_result["reason"] = f"gemini_override|{gemini_result.get('reason')}"
+            gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), fusion_score)
             _debug(f"Hybrid override accepted decision={gemini_result.get('decision')} confidence={gemini_result.get('confidence')}")
             return gemini_result
         _debug("Hybrid override rejected, fallback kept")
