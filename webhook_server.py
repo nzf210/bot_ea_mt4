@@ -46,6 +46,8 @@ AI_SIGNAL_PROCESSING_INTERVAL_SEC = float(os.getenv("AI_SIGNAL_PROCESSING_INTERV
 ACTIVE_SIGNAL_TTL_SEC = int(os.getenv("ACTIVE_SIGNAL_TTL_SEC", "120"))
 REVERSAL_ON_OPEN_POSITION = os.getenv("REVERSAL_ON_OPEN_POSITION", "false").lower() in {"1", "true", "yes", "on"}
 POST_CLOSE_COOLDOWN_SEC = int(os.getenv("POST_CLOSE_COOLDOWN_SEC", "30"))
+LOSS_COOLDOWN_SEC = int(os.getenv("LOSS_COOLDOWN_SEC", "180"))
+MAX_CONSECUTIVE_LOSSES_PER_SIDE = int(os.getenv("MAX_CONSECUTIVE_LOSSES_PER_SIDE", "2"))
 XAU_ENTRY_ZONE_MIN = float(os.getenv("XAU_ENTRY_ZONE_MIN", "0.5"))
 XAU_ENTRY_ZONE_MAX = float(os.getenv("XAU_ENTRY_ZONE_MAX", "1.5"))
 XAU_ENTRY_ZONE_RANGE_MULT = float(os.getenv("XAU_ENTRY_ZONE_RANGE_MULT", "0.35"))
@@ -81,6 +83,10 @@ SNAPSHOT_STATE = {
     "last_execution_signal_id": None,
     "last_execution_type": None,
     "last_execution_ticket": None,
+    "last_trade_outcome": None,
+    "last_loss_side": None,
+    "last_loss_at": None,
+    "consecutive_losses": {"BUY": 0, "SELL": 0},
     "queue_size": 0,
     "last_error": None,
 }
@@ -307,6 +313,16 @@ def _parse_iso_utc(value: Optional[str]):
 
 
 def _check_signal_conflict(current_signal: Optional[dict], normalized_symbol: str, decision: str):
+    now = datetime.now(timezone.utc)
+    loss_side = SNAPSHOT_STATE.get("last_loss_side")
+    last_loss_at = _parse_iso_utc(SNAPSHOT_STATE.get("last_loss_at"))
+    consecutive_losses = SNAPSHOT_STATE.get("consecutive_losses", {}).get(decision, 0)
+    if loss_side == decision and last_loss_at is not None:
+        since_loss = (now - last_loss_at).total_seconds()
+        if since_loss < LOSS_COOLDOWN_SEC:
+            return "loss_cooldown_active"
+    if consecutive_losses >= MAX_CONSECUTIVE_LOSSES_PER_SIDE:
+        return "max_consecutive_losses_reached"
     if not _is_signal_fresh(current_signal):
         return None
     current_symbol = current_signal.get("symbol")
@@ -323,7 +339,7 @@ def _check_signal_conflict(current_signal: Optional[dict], normalized_symbol: st
     if current_status == "CLOSED":
         closed_at = _parse_iso_utc(current_signal.get("closed_at"))
         if closed_at is not None:
-            since_close = (datetime.now(timezone.utc) - closed_at).total_seconds()
+            since_close = (now - closed_at).total_seconds()
             if since_close < POST_CLOSE_COOLDOWN_SEC:
                 return "post_close_cooldown_active"
     return None
@@ -940,5 +956,26 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
         elif report_kind in {"CLOSE", "CLOSED", "EXIT"}:
             current_signal["status"] = "CLOSED"
             current_signal["closed_at"] = event["at"]
+            outcome = str(payload.get("outcome", payload.get("result", ""))).upper()
+            pnl = payload.get("pnl")
+            if outcome:
+                current_signal["outcome"] = outcome
+            if pnl is not None:
+                current_signal["pnl"] = pnl
+            side = current_signal.get("side")
+            if outcome in {"LOSS", "SL", "STOP_LOSS", "NEGATIVE"}:
+                SNAPSHOT_STATE["last_trade_outcome"] = outcome
+                SNAPSHOT_STATE["last_loss_side"] = side
+                SNAPSHOT_STATE["last_loss_at"] = event["at"]
+                losses = SNAPSHOT_STATE.setdefault("consecutive_losses", {"BUY": 0, "SELL": 0})
+                losses[side] = int(losses.get(side, 0)) + 1
+            elif outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE", "BREAKEVEN", "BE"}:
+                SNAPSHOT_STATE["last_trade_outcome"] = outcome
+                losses = SNAPSHOT_STATE.setdefault("consecutive_losses", {"BUY": 0, "SELL": 0})
+                if side in losses:
+                    losses[side] = 0
+                if outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE"}:
+                    SNAPSHOT_STATE["last_loss_side"] = None
+                    SNAPSHOT_STATE["last_loss_at"] = None
             _store_signal_payload(current_signal)
     return {"ok": True}
