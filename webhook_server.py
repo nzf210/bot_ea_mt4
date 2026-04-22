@@ -82,6 +82,8 @@ SNAPSHOT_STATE = {
     "last_decision_source": None,
     "last_deterministic_score": None,
     "last_fusion_score": None,
+    "last_adaptive_trade_threshold": None,
+    "last_adaptive_no_trade_threshold": None,
     "last_gemini_evaluation": None,
     "last_no_trade_at": None,
     "last_no_trade_reason": None,
@@ -652,6 +654,8 @@ async def snapshot_worker_loop():
                 SNAPSHOT_STATE["last_decision_source"] = result.get("decision_source", "unknown")
                 SNAPSHOT_STATE["last_deterministic_score"] = result.get("deterministic_score")
                 SNAPSHOT_STATE["last_fusion_score"] = result.get("fusion_score")
+                SNAPSHOT_STATE["last_adaptive_trade_threshold"] = result.get("adaptive_trade_threshold")
+                SNAPSHOT_STATE["last_adaptive_no_trade_threshold"] = result.get("adaptive_no_trade_threshold")
                 SNAPSHOT_STATE["last_gemini_evaluation"] = result.get("evaluation")
                 SNAPSHOT_STATE["last_snapshot_timeframe"] = snap.get("timeframe")
                 if result.get("decision") not in {"BUY", "SELL"}:
@@ -669,6 +673,8 @@ async def snapshot_worker_loop():
                         "decision_source": result.get("decision_source", "unknown"),
                         "deterministic_score": result.get("deterministic_score"),
                         "fusion_score": result.get("fusion_score"),
+                        "adaptive_trade_threshold": result.get("adaptive_trade_threshold"),
+                        "adaptive_no_trade_threshold": result.get("adaptive_no_trade_threshold"),
                         "evaluation": result.get("evaluation"),
                     })
                     continue
@@ -712,6 +718,8 @@ async def snapshot_worker_loop():
                     "decision_source": result.get("decision_source", "unknown"),
                     "deterministic_score": result.get("deterministic_score"),
                     "fusion_score": result.get("fusion_score"),
+                    "adaptive_trade_threshold": result.get("adaptive_trade_threshold"),
+                    "adaptive_no_trade_threshold": result.get("adaptive_no_trade_threshold"),
                     "evaluation": result.get("evaluation"),
                 })
                 if AI_SIGNAL_PUBLISH_ENABLED:
@@ -851,6 +859,8 @@ def _strategy_summary():
         "last_decision_source": SNAPSHOT_STATE.get("last_decision_source"),
         "last_deterministic_score": SNAPSHOT_STATE.get("last_deterministic_score"),
         "last_fusion_score": SNAPSHOT_STATE.get("last_fusion_score"),
+        "last_adaptive_trade_threshold": SNAPSHOT_STATE.get("last_adaptive_trade_threshold"),
+        "last_adaptive_no_trade_threshold": SNAPSHOT_STATE.get("last_adaptive_no_trade_threshold"),
         "last_gemini_evaluation": SNAPSHOT_STATE.get("last_gemini_evaluation"),
         "last_snapshot_timeframe": SNAPSHOT_STATE.get("last_snapshot_timeframe"),
     }

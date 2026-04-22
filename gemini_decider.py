@@ -29,6 +29,9 @@ LATE_ENTRY_RANGE_FACTOR = float(os.getenv("LATE_ENTRY_RANGE_FACTOR", "0.75"))
 EXHAUSTION_BODY_RATIO = float(os.getenv("EXHAUSTION_BODY_RATIO", "0.8"))
 DETERMINISTIC_SCORE_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_TRADE_THRESHOLD", "0.58"))
 DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD", "0.48"))
+ADAPTIVE_THRESHOLD_ENABLED = os.getenv("ADAPTIVE_THRESHOLD_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+ADAPTIVE_THRESHOLD_MAX_PENALTY = float(os.getenv("ADAPTIVE_THRESHOLD_MAX_PENALTY", "0.08"))
+ADAPTIVE_THRESHOLD_MAX_BONUS = float(os.getenv("ADAPTIVE_THRESHOLD_MAX_BONUS", "0.03"))
 GEMINI_OVERRIDE_CONFIDENCE = float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.72"))
 GEMINI_RUNTIME_STATE = {
     "enabled": GEMINI_ENABLED,
@@ -246,13 +249,49 @@ def _deterministic_score(snapshot: dict, pf: dict) -> float:
     return max(0.0, min(score, 0.95))
 
 
+def _adaptive_thresholds(pf: dict):
+    trade_threshold = DETERMINISTIC_SCORE_TRADE_THRESHOLD
+    no_trade_threshold = DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD
+    if not ADAPTIVE_THRESHOLD_ENABLED:
+        return trade_threshold, no_trade_threshold
+
+    spread_quality = float(pf.get("spread_quality", 0.0))
+    late_ratio = float(pf.get("late_ratio", 1.0))
+    body_ratio = float(pf.get("body_ratio", 0.0))
+
+    penalty = 0.0
+    bonus = 0.0
+
+    if spread_quality < 0.35:
+        penalty += 0.03
+    elif spread_quality > 0.75:
+        bonus += 0.01
+
+    if late_ratio > 0.6:
+        penalty += 0.03
+    elif late_ratio < 0.3:
+        bonus += 0.01
+
+    if body_ratio > 0.75:
+        penalty += 0.02
+    elif 0.3 <= body_ratio <= 0.6:
+        bonus += 0.01
+
+    penalty = min(penalty, ADAPTIVE_THRESHOLD_MAX_PENALTY)
+    bonus = min(bonus, ADAPTIVE_THRESHOLD_MAX_BONUS)
+    trade_threshold = max(0.4, min(0.9, trade_threshold + penalty - bonus))
+    no_trade_threshold = max(0.3, min(trade_threshold - 0.02, no_trade_threshold + (penalty * 0.7) - (bonus * 0.5)))
+    return trade_threshold, no_trade_threshold
+
+
 def decide_with_mock_gemini(snapshot: dict):
     pf = prefilter(snapshot)
     if not pf["pass"]:
         return {"decision": "NO_TRADE", "confidence": 0.0, "reason": pf["reason"]}
     score = _deterministic_score(snapshot, pf)
-    decision = pf["bias"] if score >= DETERMINISTIC_SCORE_TRADE_THRESHOLD else "NO_TRADE"
-    reason = pf["reason"] if decision != "NO_TRADE" else f"deterministic_score_too_low:{score:.2f}|{pf['reason']}"
+    trade_threshold, no_trade_threshold = _adaptive_thresholds(pf)
+    decision = pf["bias"] if score >= trade_threshold else "NO_TRADE"
+    reason = pf["reason"] if decision != "NO_TRADE" else f"deterministic_score_too_low:{score:.2f}|threshold={trade_threshold:.2f}|{pf['reason']}"
     return {
         "decision": decision,
         "confidence": score,
@@ -261,6 +300,8 @@ def decide_with_mock_gemini(snapshot: dict):
         "symbol": normalize_symbol(snapshot["symbol"]),
         "timeframe": snapshot.get("timeframe", "M1"),
         "deterministic_score": score,
+        "adaptive_trade_threshold": trade_threshold,
+        "adaptive_no_trade_threshold": no_trade_threshold,
     }
 
 
@@ -416,6 +457,8 @@ def decide_trade(snapshot: dict):
     fallback = decide_with_mock_gemini(snapshot)
     fallback["decision_source"] = "mock"
     deterministic_score = float(fallback.get("deterministic_score", fallback.get("confidence", 0.0)))
+    adaptive_trade_threshold = float(fallback.get("adaptive_trade_threshold", DETERMINISTIC_SCORE_TRADE_THRESHOLD))
+    adaptive_no_trade_threshold = float(fallback.get("adaptive_no_trade_threshold", DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD))
     GEMINI_RUNTIME_STATE["last_decision_source"] = "mock"
     gemini_result = _try_decide_with_gemini(snapshot, pf)
     if gemini_result is not None:
@@ -434,7 +477,7 @@ def decide_trade(snapshot: dict):
         if gemini_result.get("decision") == fallback.get("decision"):
             gemini_result["deterministic_score"] = deterministic_score
             gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), fusion_score)
-            if fusion_score < DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD:
+            if fusion_score < adaptive_no_trade_threshold:
                 _debug(f"Hybrid fusion downgraded to NO_TRADE score={fusion_score}")
                 return {
                     "decision": "NO_TRADE",
@@ -447,12 +490,16 @@ def decide_trade(snapshot: dict):
                     "evaluation": evaluation,
                     "deterministic_score": deterministic_score,
                     "fusion_score": fusion_score,
+                    "adaptive_trade_threshold": adaptive_trade_threshold,
+                    "adaptive_no_trade_threshold": adaptive_no_trade_threshold,
                 }
             _debug(f"Hybrid decision aligned with fallback decision={gemini_result.get('decision')}")
             return gemini_result
         if gemini_result.get("decision") == "NO_TRADE":
             gemini_result["deterministic_score"] = deterministic_score
             gemini_result["fusion_score"] = fusion_score
+            gemini_result["adaptive_trade_threshold"] = adaptive_trade_threshold
+            gemini_result["adaptive_no_trade_threshold"] = adaptive_no_trade_threshold
             _debug("Hybrid decision downgraded to NO_TRADE by Gemini")
             return gemini_result
         if fusion_score >= GEMINI_OVERRIDE_CONFIDENCE and float(gemini_result.get("confidence", 0.0)) >= MIN_CONFIDENCE:
@@ -460,10 +507,14 @@ def decide_trade(snapshot: dict):
             gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), fusion_score)
             gemini_result["deterministic_score"] = deterministic_score
             gemini_result["fusion_score"] = fusion_score
+            gemini_result["adaptive_trade_threshold"] = adaptive_trade_threshold
+            gemini_result["adaptive_no_trade_threshold"] = adaptive_no_trade_threshold
             _debug(f"Hybrid override accepted decision={gemini_result.get('decision')} confidence={gemini_result.get('confidence')}")
             return gemini_result
         _debug("Hybrid override rejected, fallback kept")
 
     _debug(f"Fallback decision used decision={fallback.get('decision')} reason={fallback.get('reason')}")
     fallback["deterministic_score"] = deterministic_score
+    fallback["adaptive_trade_threshold"] = adaptive_trade_threshold
+    fallback["adaptive_no_trade_threshold"] = adaptive_no_trade_threshold
     return fallback
