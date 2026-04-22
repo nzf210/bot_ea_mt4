@@ -1,0 +1,32 @@
+{
+  "signal_id": "xau-20260421-001",
+  "timestamp_utc": "2026-04-21T15:00:00Z",
+  "symbol": "XAUUSD",
+  "timeframe": "M15",
+  "side": "BUY",
+  "entry_zone": {
+    "min": 3348.20,
+    "max": 3349.00
+  },
+  "stop_loss": 3344.80,
+  "take_profit": [
+    {
+      "label": "TP1",
+      "price": 3352.50,
+      "close_pct": 0.5
+    },
+    {
+      "label": "TP2",
+      "price": 3356.80,
+      "close_pct": 0.5
+    }
+  ],
+  "confidence": 0.74,
+  "invalidation": "Close M15 below 3345.00",
+  "max_signal_age_sec": 180,
+  "market_context": {
+    "spread_max_points": 35,
+    "session": "LONDON_NY_OVERLAP",
+    "news_block_minutes": 30
+  }
+}
