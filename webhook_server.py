@@ -789,6 +789,36 @@ def _read_journal_events(limit: int = 50, event_type: Optional[str] = None):
     return events
 
 
+def _audit_summary(limit: int = 200):
+    events = _read_journal_events(limit=limit)
+    rejection_counts = {}
+    recent_errors = []
+    executions = []
+    generated_signals = []
+    for item in events:
+        event_type = str(item.get("type") or item.get("event_type") or "")
+        if event_type == "snapshot_rejected":
+            reason = str(item.get("reason") or "unknown")
+            rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+        if event_type == "signal_generated_from_snapshot":
+            generated_signals.append(item)
+        if event_type == "execution_report":
+            executions.append(item)
+        if item.get("level") == "error" or event_type in {"error", "snapshot_worker_error"}:
+            recent_errors.append(item)
+    top_rejections = [
+        {"reason": reason, "count": count}
+        for reason, count in sorted(rejection_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    ]
+    return {
+        "top_rejection_reasons": top_rejections,
+        "recent_executions": executions[:10],
+        "recent_generated_signals": generated_signals[:10],
+        "recent_errors": recent_errors[:10],
+        "journal_events_scanned": len(events),
+    }
+
+
 def _run_startup_checks():
     checks = []
     env_exists = os.path.exists(os.path.join(BASE_DIR, ".env"))
@@ -1029,6 +1059,17 @@ def audit_journal(limit: int = 50, event_type: Optional[str] = None, authorizati
         "limit": safe_limit,
         "event_type": event_type,
         "events": events,
+    }
+
+
+@app.get("/audit/summary")
+def audit_summary(limit: int = 200, authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    safe_limit = max(20, min(limit, 500))
+    return {
+        "ok": True,
+        "limit": safe_limit,
+        "summary": _audit_summary(limit=safe_limit),
     }
 
 
