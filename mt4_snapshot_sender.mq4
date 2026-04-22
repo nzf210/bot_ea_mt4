@@ -20,6 +20,11 @@ string CharArrayToStringSafe(char &arr[])
    return CharArrayToString(arr, 0, -1);
 }
 
+string JsonNumber(double value, int digits)
+{
+   return DoubleToString(value, digits);
+}
+
 int OnInit()
 {
    EventSetTimer(30);
@@ -49,10 +54,16 @@ void SendSnapshot()
    double close = iClose(symbol, PERIOD_M1, 0);
    long volume = iVolume(symbol, PERIOD_M1, 0);
 
+   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
    string body = StringFormat(
-      "{\"timestamp_utc\":\"%s\",\"snapshots\":[{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"bid\":%G,\"ask\":%G,\"spread_points\":%d,\"ohlc\":{\"open\":%G,\"high\":%G,\"low\":%G,\"close\":%G},\"volume\":%G}]}",
-      IsoTimeUTC(), symbol, bid, ask, spread, open, high, low, close, volume
+      "{\"timestamp_utc\":\"%s\",\"snapshots\":[{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"bid\":%s,\"ask\":%s,\"spread_points\":%d,\"ohlc\":{\"open\":%s,\"high\":%s,\"low\":%s,\"close\":%s},\"volume\":%d}]}",
+      IsoTimeUTC(), symbol,
+      JsonNumber(bid, digits), JsonNumber(ask, digits), spread,
+      JsonNumber(open, digits), JsonNumber(high, digits), JsonNumber(low, digits), JsonNumber(close, digits),
+      volume
    );
+
+   Print("Snapshot request body: ", body);
 
    string headers = "Authorization: Bearer " + ReceiverToken + "\r\nContent-Type: application/json\r\n";
    char data[];
