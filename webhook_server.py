@@ -70,6 +70,10 @@ SNAPSHOT_STATE = {
     "last_decision": None,
     "last_reason": None,
     "last_decision_source": None,
+    "last_no_trade_at": None,
+    "last_no_trade_reason": None,
+    "last_no_trade_symbol": None,
+    "last_snapshot_timeframe": None,
     "queue_size": 0,
     "last_error": None,
 }
@@ -510,7 +514,20 @@ async def snapshot_worker_loop():
                 SNAPSHOT_STATE["last_decision"] = result.get("decision")
                 SNAPSHOT_STATE["last_reason"] = result.get("reason")
                 SNAPSHOT_STATE["last_decision_source"] = result.get("decision_source", "unknown")
+                SNAPSHOT_STATE["last_snapshot_timeframe"] = snap.get("timeframe")
                 if result.get("decision") not in {"BUY", "SELL"}:
+                    SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
+                    SNAPSHOT_STATE["last_no_trade_reason"] = result.get("reason")
+                    SNAPSHOT_STATE["last_no_trade_symbol"] = snap.get("symbol")
+                    _append_journal({
+                        "event_id": str(uuid.uuid4()),
+                        "type": "snapshot_rejected",
+                        "at": datetime.now(timezone.utc).isoformat(),
+                        "symbol": snap.get("symbol"),
+                        "timeframe": snap.get("timeframe"),
+                        "reason": result.get("reason"),
+                        "decision_source": result.get("decision_source", "unknown"),
+                    })
                     continue
                 normalized_symbol = result.get("symbol", snap["symbol"])
                 key = f"{normalized_symbol}:{result['decision']}:{result['entry']}"
@@ -649,6 +666,30 @@ def health():
 def health_ready(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
     return {"ok": True, "startup": STARTUP_STATUS, "snapshot_state": SNAPSHOT_STATE}
+
+
+@app.get("/strategy/status")
+def strategy_status(authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    signal_payload = None
+    signal_age_sec = None
+    if os.path.exists(SIGNAL_STORE):
+        try:
+            with open(SIGNAL_STORE, "r", encoding="utf-8") as f:
+                signal_payload = json.load(f)
+            ts = signal_payload.get("timestamp_utc")
+            if ts:
+                signal_dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                signal_age_sec = round((datetime.now(timezone.utc) - signal_dt).total_seconds(), 2)
+        except Exception:
+            signal_payload = None
+    return {
+        "ok": True,
+        "snapshot_state": SNAPSHOT_STATE,
+        "signal_present": signal_payload is not None,
+        "signal_age_sec": signal_age_sec,
+        "signal": signal_payload,
+    }
 
 
 @app.post("/market/snapshot")
