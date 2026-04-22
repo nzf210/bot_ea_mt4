@@ -10,7 +10,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
-from gemini_decider import decide_trade, normalize_symbol, get_gemini_runtime_state
+from gemini_decider import decide_trade, normalize_symbol, get_gemini_runtime_state, set_gemini_runtime_state
 
 BASE_DIR = os.path.dirname(__file__)
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -262,6 +262,7 @@ def _save_runtime_state():
     payload = {
         "snapshot_state": SNAPSHOT_STATE,
         "ai4trade_state": AI4TRADE_STATE,
+        "gemini_runtime_state": get_gemini_runtime_state(),
         "saved_at": datetime.now(timezone.utc).isoformat(),
     }
     _ensure_parent_dir(RUNTIME_STATE_FILE)
@@ -279,6 +280,8 @@ def _load_runtime_state():
             SNAPSHOT_STATE.update(payload["snapshot_state"])
         if isinstance(payload.get("ai4trade_state"), dict):
             AI4TRADE_STATE.update(payload["ai4trade_state"])
+        if isinstance(payload.get("gemini_runtime_state"), dict):
+            set_gemini_runtime_state(payload["gemini_runtime_state"])
     except Exception as e:
         print(f"Error loading runtime state: {e}")
 

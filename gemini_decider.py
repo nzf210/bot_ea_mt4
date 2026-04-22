@@ -240,6 +240,14 @@ def get_gemini_runtime_state():
     return dict(GEMINI_RUNTIME_STATE)
 
 
+def set_gemini_runtime_state(payload: dict):
+    if not isinstance(payload, dict):
+        return
+    for key in ["enabled", "model", "binary_found", "binary_path", "last_error", "last_return_code", "last_decision_source"]:
+        if key in payload:
+            GEMINI_RUNTIME_STATE[key] = payload.get(key)
+
+
 def _debug(message: str):
     if GEMINI_DEBUG:
         print(f"[gemini_decider] {message}")
