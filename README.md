@@ -104,9 +104,14 @@ Catatan:
 - schema native `ai4trade.ai` tidak sama dengan schema internal bridge
 - adapter akan mencoba mapping signal feed ke format MT4 bridge
 - untuk saat ini adapter hanya cocok untuk signal `XAUUSD` dengan `BUY`/`SELL`
-- SL/TP masih heuristik jika source feed tidak memberi level lengkap
+- raw payload terakhir akan disimpan ke file agar mudah debug
+- SL/TP sekarang memakai heuristik yang sedikit lebih spesifik untuk konteks XAU, tapi tetap belum sebaik signal execution-ready asli
 
 Lihat juga: `ai4trade_adapter.md`
+
+Endpoint debug tambahan:
+- `GET /ai4trade/status`
+- `GET /ai4trade/raw`
 
 ## 7. File tambahan production
 

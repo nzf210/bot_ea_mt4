@@ -32,6 +32,13 @@ NEWS_CACHE = {
     "latest": [],
     "updated_at": None,
 }
+AI4TRADE_RAW_STORE = os.getenv("AI4TRADE_RAW_STORE", os.path.join(BASE_DIR, "ai4trade_last_raw.json"))
+AI4TRADE_STATE = {
+    "last_fetch_at": None,
+    "last_signal_count": 0,
+    "last_selected": None,
+    "last_error": None,
+}
 NEWS_URL = os.getenv("NEWS_CALENDAR_URL", "https://nfs.faireconomy.media/ff_calendar_thisweek.json")
 NEWS_REFRESH_SEC = int(os.getenv("NEWS_REFRESH_SEC", "3600"))
 DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
@@ -93,6 +100,13 @@ async def update_news_loop():
         _run_startup_checks()
         await asyncio.sleep(NEWS_REFRESH_SEC)
 
+def _save_ai4trade_raw(payload):
+    try:
+        with open(AI4TRADE_RAW_STORE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except Exception as e:
+        print(f"Error saving ai4trade raw payload: {e}")
+
 async def refresh_ai4trade_signal_once():
     if not AI4TRADE_TOKEN:
         return
@@ -102,13 +116,19 @@ async def refresh_ai4trade_signal_once():
             response = await client.get(f"{AI4TRADE_FEED_URL}?limit=20&sort=new", headers=headers, timeout=15)
             response.raise_for_status()
             payload = response.json()
+            _save_ai4trade_raw(payload)
             signals = payload.get("signals", []) if isinstance(payload, dict) else []
             converted = convert_ai4trade_signal(signals)
+            AI4TRADE_STATE["last_fetch_at"] = datetime.now(timezone.utc).isoformat()
+            AI4TRADE_STATE["last_signal_count"] = len(signals)
+            AI4TRADE_STATE["last_selected"] = converted.get("signal_id") if converted else None
+            AI4TRADE_STATE["last_error"] = None
             if converted:
                 os.makedirs(os.path.dirname(SIGNAL_STORE), exist_ok=True)
                 with open(SIGNAL_STORE, "w", encoding="utf-8") as f:
                     json.dump(converted, f, indent=2)
     except Exception as e:
+        AI4TRADE_STATE["last_error"] = str(e)
         print(f"Error fetching ai4trade signals: {e}")
 
 async def update_ai4trade_loop():
@@ -116,6 +136,23 @@ async def update_ai4trade_loop():
         await refresh_ai4trade_signal_once()
         _run_startup_checks()
         await asyncio.sleep(AI4TRADE_POLL_SEC)
+
+def _infer_xau_levels(side: str, entry_price: float, content: str):
+    stop_offset = 5.0
+    tp_offset = 8.0
+    text = (content or "").lower()
+    if "scalp" in text:
+        stop_offset = 3.0
+        tp_offset = 5.0
+    elif "swing" in text:
+        stop_offset = 8.0
+        tp_offset = 12.0
+    elif "take-profit" in text or "tp" in text:
+        tp_offset = 10.0
+
+    stop_loss = entry_price - stop_offset if side == "BUY" else entry_price + stop_offset
+    tp1 = entry_price + tp_offset if side == "BUY" else entry_price - tp_offset
+    return round(stop_loss, 2), round(tp1, 2)
 
 def convert_ai4trade_signal(signals: list):
     for item in signals:
@@ -142,10 +179,8 @@ def convert_ai4trade_signal(signals: list):
         timestamp_utc = item.get("executed_at") or item.get("created_at") or datetime.now(timezone.utc).isoformat()
         content = item.get("content") or ""
         confidence = 0.7 if item.get("message_type") == "operation" else AI4TRADE_MIN_CONFIDENCE
-        stop_offset = 5.0
-        tp_offset = 8.0
-        stop_loss = entry_price - stop_offset if side == "BUY" else entry_price + stop_offset
-        tp1 = entry_price + tp_offset if side == "BUY" else entry_price - tp_offset
+        stop_loss, tp1 = _infer_xau_levels(side, entry_price, content)
+        zone_size = 0.3 if confidence < 0.8 else 0.2
         return {
             "signal_id": f"ai4trade-{signal_id}",
             "timestamp_utc": timestamp_utc.replace("Z", "+00:00").replace("+00:00", "Z"),
@@ -153,14 +188,14 @@ def convert_ai4trade_signal(signals: list):
             "timeframe": "M15",
             "side": side,
             "entry_zone": {
-                "min": round(entry_price - 0.3, 2),
-                "max": round(entry_price + 0.3, 2),
+                "min": round(entry_price - zone_size, 2),
+                "max": round(entry_price + zone_size, 2),
             },
-            "stop_loss": round(stop_loss, 2),
+            "stop_loss": stop_loss,
             "take_profit": [
                 {
                     "label": "TP1",
-                    "price": round(tp1, 2),
+                    "price": tp1,
                     "close_pct": 1.0,
                 }
             ],
@@ -312,6 +347,27 @@ def health_ready(authorization: Optional[str] = Header(default=None)):
         "ok": True,
         "startup": STARTUP_STATUS,
     }
+
+@app.get("/ai4trade/status")
+def ai4trade_status(authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    return {
+        "ok": True,
+        "enabled": bool(AI4TRADE_TOKEN),
+        "agent_id": AI4TRADE_AGENT_ID,
+        "feed_url": AI4TRADE_FEED_URL,
+        "poll_sec": AI4TRADE_POLL_SEC,
+        "state": AI4TRADE_STATE,
+        "raw_store": AI4TRADE_RAW_STORE,
+    }
+
+@app.get("/ai4trade/raw")
+def ai4trade_raw(authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    if not os.path.exists(AI4TRADE_RAW_STORE):
+        return {"ok": True, "payload": None}
+    with open(AI4TRADE_RAW_STORE, "r", encoding="utf-8") as f:
+        return {"ok": True, "payload": json.load(f)}
 
 @app.get("/news/status")
 def news_status(authorization: Optional[str] = Header(default=None)):
