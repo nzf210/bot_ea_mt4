@@ -19,6 +19,10 @@ STARTUP_STATUS = {
     "ready": False,
     "checks": [],
     "checked_at": None,
+    "runtime_state_restored": False,
+    "runtime_state_source": None,
+    "runtime_state_saved_at": None,
+    "runtime_state_error": None,
 }
 
 APP_TOKEN = os.getenv("BRIDGE_API_TOKEN", "change-me-token")
@@ -161,6 +165,15 @@ class SnapshotBatch(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _load_runtime_state()
+    _append_journal({
+        "event_id": str(uuid.uuid4()),
+        "type": "runtime_state_restore",
+        "at": datetime.now(timezone.utc).isoformat(),
+        "restored": STARTUP_STATUS.get("runtime_state_restored"),
+        "source": STARTUP_STATUS.get("runtime_state_source"),
+        "saved_at": STARTUP_STATUS.get("runtime_state_saved_at"),
+        "error": STARTUP_STATUS.get("runtime_state_error"),
+    })
     await refresh_news_cache()
     await refresh_ai4trade_signal_once()
     _run_startup_checks()
@@ -272,6 +285,10 @@ def _save_runtime_state():
 
 def _load_runtime_state():
     if not os.path.exists(RUNTIME_STATE_FILE):
+        STARTUP_STATUS["runtime_state_restored"] = False
+        STARTUP_STATUS["runtime_state_source"] = None
+        STARTUP_STATUS["runtime_state_saved_at"] = None
+        STARTUP_STATUS["runtime_state_error"] = None
         return
     try:
         with open(RUNTIME_STATE_FILE, "r", encoding="utf-8") as f:
@@ -282,7 +299,15 @@ def _load_runtime_state():
             AI4TRADE_STATE.update(payload["ai4trade_state"])
         if isinstance(payload.get("gemini_runtime_state"), dict):
             set_gemini_runtime_state(payload["gemini_runtime_state"])
+        STARTUP_STATUS["runtime_state_restored"] = True
+        STARTUP_STATUS["runtime_state_source"] = RUNTIME_STATE_FILE
+        STARTUP_STATUS["runtime_state_saved_at"] = payload.get("saved_at")
+        STARTUP_STATUS["runtime_state_error"] = None
     except Exception as e:
+        STARTUP_STATUS["runtime_state_restored"] = False
+        STARTUP_STATUS["runtime_state_source"] = RUNTIME_STATE_FILE
+        STARTUP_STATUS["runtime_state_saved_at"] = None
+        STARTUP_STATUS["runtime_state_error"] = str(e)
         print(f"Error loading runtime state: {e}")
 
 
@@ -997,6 +1022,12 @@ def ops_summary(authorization: Optional[str] = Header(default=None)):
         },
         "gemini": get_gemini_runtime_state(),
         "risk_config": _effective_risk_config(),
+        "runtime_restore": {
+            "restored": STARTUP_STATUS.get("runtime_state_restored"),
+            "source": STARTUP_STATUS.get("runtime_state_source"),
+            "saved_at": STARTUP_STATUS.get("runtime_state_saved_at"),
+            "error": STARTUP_STATUS.get("runtime_state_error"),
+        },
     }
 
 
