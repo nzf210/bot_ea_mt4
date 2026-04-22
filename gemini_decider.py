@@ -27,6 +27,58 @@ def get_max_spread(symbol: str) -> int:
     return XAU_MAX_SPREAD if symbol == "XAUUSD" else FOREX_MAX_SPREAD
 
 
+def _extract_recent_candles(snapshot: dict):
+    candles = snapshot.get("recent_candles") or []
+    if not isinstance(candles, list):
+        return []
+    clean = []
+    for item in candles:
+        if not isinstance(item, dict):
+            continue
+        try:
+            clean.append({
+                "shift": int(item.get("shift", 0)),
+                "open": float(item["open"]),
+                "high": float(item["high"]),
+                "low": float(item["low"]),
+                "close": float(item["close"]),
+                "volume": float(item.get("volume", 0)),
+            })
+        except Exception:
+            continue
+    return clean
+
+
+def _candle_direction(candle: dict):
+    if candle["close"] > candle["open"]:
+        return "BUY"
+    if candle["close"] < candle["open"]:
+        return "SELL"
+    return "FLAT"
+
+
+def _recent_structure_gate(snapshot: dict):
+    candles = _extract_recent_candles(snapshot)
+    if len(candles) < 3:
+        return {"pass": True, "reason": "recent_candles_insufficient"}
+
+    latest = candles[0]
+    latest_range = max(latest["high"] - latest["low"], 0.00001)
+    latest_body = abs(latest["close"] - latest["open"])
+    body_ratio = latest_body / latest_range
+    if body_ratio < 0.2:
+        return {"pass": False, "reason": f"weak_last_candle:{body_ratio:.2f}"}
+
+    directions = [_candle_direction(c) for c in candles[:3]]
+    buy_count = len([d for d in directions if d == "BUY"])
+    sell_count = len([d for d in directions if d == "SELL"])
+    if buy_count >= 2:
+        return {"pass": True, "bias": "BUY", "reason": "recent_structure_buy"}
+    if sell_count >= 2:
+        return {"pass": True, "bias": "SELL", "reason": "recent_structure_sell"}
+    return {"pass": False, "reason": "mixed_recent_structure"}
+
+
 def prefilter(snapshot: dict):
     bid = float(snapshot["bid"])
     ask = float(snapshot["ask"])
@@ -47,8 +99,21 @@ def prefilter(snapshot: dict):
     else:
         return {"pass": False, "reason": "flat_candle"}
 
+    structure = _recent_structure_gate(snapshot)
+    if not structure["pass"]:
+        return {"pass": False, "reason": structure["reason"]}
+    if structure.get("bias") and structure["bias"] != bias:
+        return {"pass": False, "reason": f"bias_conflict:{bias}_vs_{structure['bias']}"}
+
     entry = round((bid + ask) / 2.0, 5 if symbol != "XAUUSD" else 2)
-    return {"pass": True, "bias": bias, "entry": entry, "reason": "basic_candle_bias"}
+    return {
+        "pass": True,
+        "bias": bias,
+        "entry": entry,
+        "reason": f"basic_candle_bias|{structure['reason']}",
+        "recent_structure": structure['reason'],
+        "recent_candles_used": len(_extract_recent_candles(snapshot)),
+    }
 
 
 def decide_with_mock_gemini(snapshot: dict):
@@ -75,6 +140,7 @@ def _gemini_prompt(snapshot: dict, pf: dict) -> str:
         "spread_points": snapshot.get("spread_points"),
         "ohlc": snapshot.get("ohlc"),
         "volume": snapshot.get("volume"),
+        "recent_candles": snapshot.get("recent_candles", []),
         "prefilter": pf,
     }
     return (

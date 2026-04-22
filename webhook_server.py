@@ -109,6 +109,15 @@ class OHLC(BaseModel):
     close: float
 
 
+class SnapshotCandle(BaseModel):
+    shift: int = 0
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float = 0
+
+
 class Snapshot(BaseModel):
     symbol: str
     timeframe: str = "M1"
@@ -117,6 +126,7 @@ class Snapshot(BaseModel):
     spread_points: int
     ohlc: OHLC
     volume: float = 0
+    recent_candles: List[SnapshotCandle] = []
 
 
 class SnapshotBatch(BaseModel):
