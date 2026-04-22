@@ -63,6 +63,7 @@ SNAPSHOT_STATE = {
     "last_signal_id": None,
     "last_decision": None,
     "last_reason": None,
+    "last_decision_source": None,
     "queue_size": 0,
     "last_error": None,
 }
@@ -477,6 +478,7 @@ async def snapshot_worker_loop():
                 SNAPSHOT_STATE["last_processed_at"] = datetime.now(timezone.utc).isoformat()
                 SNAPSHOT_STATE["last_decision"] = result.get("decision")
                 SNAPSHOT_STATE["last_reason"] = result.get("reason")
+                SNAPSHOT_STATE["last_decision_source"] = result.get("decision_source", "unknown")
                 if result.get("decision") not in {"BUY", "SELL"}:
                     continue
                 normalized_symbol = result.get("symbol", snap["symbol"])
@@ -498,6 +500,7 @@ async def snapshot_worker_loop():
                     "side": signal["side"],
                     "confidence": signal["confidence"],
                     "reason": signal["invalidation"],
+                    "decision_source": result.get("decision_source", "unknown"),
                 })
                 if AI_SIGNAL_PUBLISH_ENABLED:
                     await _publish_signal_to_ai4trade(signal)
@@ -605,6 +608,7 @@ def health():
             "last_signal_id": SNAPSHOT_STATE.get("last_signal_id"),
             "last_decision": SNAPSHOT_STATE.get("last_decision"),
             "last_reason": SNAPSHOT_STATE.get("last_reason"),
+            "last_decision_source": SNAPSHOT_STATE.get("last_decision_source"),
             "last_error": SNAPSHOT_STATE.get("last_error"),
         },
     }

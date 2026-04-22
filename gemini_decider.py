@@ -16,6 +16,7 @@ GEMINI_MODEL = os.getenv("GEMINI_DECIDER_MODEL", "gemini-2.5-flash")
 XAU_MAX_SPREAD = int(os.getenv("XAU_MAX_SPREAD_POINTS", "120"))
 FOREX_MAX_SPREAD = int(os.getenv("FOREX_MAX_SPREAD_POINTS", "35"))
 MIN_CONFIDENCE = float(os.getenv("GEMINI_MIN_CONFIDENCE", "0.55"))
+GEMINI_DEBUG = os.getenv("GEMINI_DEBUG", "true").lower() in {"1", "true", "yes", "on"}
 
 
 def normalize_symbol(symbol: str) -> str:
@@ -85,11 +86,18 @@ def _gemini_prompt(snapshot: dict, pf: dict) -> str:
     )
 
 
+def _debug(message: str):
+    if GEMINI_DEBUG:
+        print(f"[gemini_decider] {message}")
+
+
 def _try_decide_with_gemini(snapshot: dict, pf: dict):
     if not GEMINI_ENABLED:
+        _debug("Gemini disabled by config, using fallback")
         return None
     gemini_bin = shutil.which("gemini")
     if not gemini_bin:
+        _debug("Gemini CLI not found, using fallback")
         return None
     prompt = _gemini_prompt(snapshot, pf)
     try:
@@ -101,14 +109,17 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
             cwd=BASE_DIR,
         )
         if result.returncode != 0:
+            _debug(f"Gemini CLI failed rc={result.returncode}, stderr={(result.stderr or '').strip()[:300]}")
             return None
         raw = (result.stdout or "").strip()
         if not raw:
+            _debug("Gemini returned empty output, using fallback")
             return None
         parsed = json.loads(raw)
         decision = str(parsed.get("decision", "NO_TRADE")).upper()
         confidence = float(parsed.get("confidence", 0.0))
         if decision not in {"BUY", "SELL", "NO_TRADE"}:
+            _debug(f"Gemini returned invalid decision={decision}, using fallback")
             return None
         symbol = normalize_symbol(parsed.get("symbol") or snapshot["symbol"])
         timeframe = parsed.get("timeframe") or snapshot.get("timeframe", "M1")
@@ -117,6 +128,7 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
             entry = float(entry)
         reason = str(parsed.get("reason") or "gemini_decision")
         if decision in {"BUY", "SELL"} and confidence < MIN_CONFIDENCE:
+            _debug(f"Gemini low confidence decision={decision} confidence={confidence}")
             return {
                 "decision": "NO_TRADE",
                 "confidence": confidence,
@@ -125,6 +137,7 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
                 "symbol": symbol,
                 "timeframe": timeframe,
             }
+        _debug(f"Gemini decision used decision={decision} confidence={confidence} reason={reason}")
         return {
             "decision": decision,
             "confidence": confidence,
@@ -132,8 +145,10 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
             "entry": entry,
             "symbol": symbol,
             "timeframe": timeframe,
+            "decision_source": "gemini",
         }
-    except Exception:
+    except Exception as e:
+        _debug(f"Gemini exception {e}, using fallback")
         return None
 
 
@@ -146,4 +161,7 @@ def decide_trade(snapshot: dict):
         if gemini_result.get("entry") is None:
             gemini_result["entry"] = pf["entry"]
         return gemini_result
-    return decide_with_mock_gemini(snapshot)
+    fallback = decide_with_mock_gemini(snapshot)
+    fallback["decision_source"] = "mock"
+    _debug(f"Fallback decision used decision={fallback.get('decision')} reason={fallback.get('reason')}")
+    return fallback

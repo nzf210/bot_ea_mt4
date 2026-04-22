@@ -42,6 +42,26 @@ void OnTimer()
    SendSnapshot();
 }
 
+string BuildRecentCandlesJson(string symbol, int timeframe, int bars, int digits)
+{
+   string candles = "[";
+   for(int i = 0; i < bars; i++)
+   {
+      if(i > 0) candles += ",";
+      candles += StringFormat(
+         "{\"shift\":%d,\"open\":%s,\"high\":%s,\"low\":%s,\"close\":%s,\"volume\":%d}",
+         i,
+         JsonNumber(iOpen(symbol, timeframe, i), digits),
+         JsonNumber(iHigh(symbol, timeframe, i), digits),
+         JsonNumber(iLow(symbol, timeframe, i), digits),
+         JsonNumber(iClose(symbol, timeframe, i), digits),
+         iVolume(symbol, timeframe, i)
+      );
+   }
+   candles += "]";
+   return candles;
+}
+
 void SendSnapshot()
 {
    string symbol = Symbol();
@@ -55,12 +75,13 @@ void SendSnapshot()
    long volume = iVolume(symbol, PERIOD_M1, 0);
 
    int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+   string recentCandles = BuildRecentCandlesJson(symbol, PERIOD_M1, 5, digits);
    string body = StringFormat(
-      "{\"timestamp_utc\":\"%s\",\"snapshots\":[{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"bid\":%s,\"ask\":%s,\"spread_points\":%d,\"ohlc\":{\"open\":%s,\"high\":%s,\"low\":%s,\"close\":%s},\"volume\":%d}]}",
+      "{\"timestamp_utc\":\"%s\",\"snapshots\":[{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"bid\":%s,\"ask\":%s,\"spread_points\":%d,\"ohlc\":{\"open\":%s,\"high\":%s,\"low\":%s,\"close\":%s},\"volume\":%d,\"recent_candles\":%s}]}",
       IsoTimeUTC(), symbol,
       JsonNumber(bid, digits), JsonNumber(ask, digits), spread,
       JsonNumber(open, digits), JsonNumber(high, digits), JsonNumber(low, digits), JsonNumber(close, digits),
-      volume
+      volume, recentCandles
    );
 
    Print("Snapshot request body: ", body);
