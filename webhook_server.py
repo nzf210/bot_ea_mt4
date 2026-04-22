@@ -765,6 +765,33 @@ def _risk_state_summary():
     }
 
 
+def _queue_summary():
+    return {
+        "size": SNAPSHOT_QUEUE.qsize(),
+        "last_received_at": SNAPSHOT_STATE.get("last_received_at"),
+        "last_processed_at": SNAPSHOT_STATE.get("last_processed_at"),
+    }
+
+
+def _strategy_summary():
+    return {
+        "last_signal_id": SNAPSHOT_STATE.get("last_signal_id"),
+        "last_decision": SNAPSHOT_STATE.get("last_decision"),
+        "last_reason": SNAPSHOT_STATE.get("last_reason"),
+        "last_decision_source": SNAPSHOT_STATE.get("last_decision_source"),
+        "last_snapshot_timeframe": SNAPSHOT_STATE.get("last_snapshot_timeframe"),
+    }
+
+
+def _news_summary(block_minutes: int = DEFAULT_NEWS_BLOCK_MINUTES):
+    active_news = get_active_news_event(block_minutes)
+    return {
+        "blocked": active_news is not None,
+        "active": active_news,
+        "updated_at": NEWS_CACHE.get("updated_at"),
+    }
+
+
 def _read_journal_events(limit: int = 50, event_type: Optional[str] = None):
     if not os.path.exists(JOURNAL_STORE):
         return []
@@ -918,31 +945,16 @@ def risk_status(authorization: Optional[str] = Header(default=None)):
 @app.get("/ops/summary")
 def ops_summary(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-    active_news = get_active_news_event(DEFAULT_NEWS_BLOCK_MINUTES)
     return {
         "ok": True,
         "service": "xauusd-mt4-bridge",
         "ready": STARTUP_STATUS.get("ready", False),
         "checked_at": STARTUP_STATUS.get("checked_at"),
-        "queue": {
-            "size": SNAPSHOT_QUEUE.qsize(),
-            "last_received_at": SNAPSHOT_STATE.get("last_received_at"),
-            "last_processed_at": SNAPSHOT_STATE.get("last_processed_at"),
-        },
-        "strategy": {
-            "last_signal_id": SNAPSHOT_STATE.get("last_signal_id"),
-            "last_decision": SNAPSHOT_STATE.get("last_decision"),
-            "last_reason": SNAPSHOT_STATE.get("last_reason"),
-            "last_decision_source": SNAPSHOT_STATE.get("last_decision_source"),
-            "last_snapshot_timeframe": SNAPSHOT_STATE.get("last_snapshot_timeframe"),
-        },
+        "queue": _queue_summary(),
+        "strategy": _strategy_summary(),
         "risk": _risk_state_summary(),
         "current_signal": _current_signal_summary(),
-        "news": {
-            "blocked": active_news is not None,
-            "active": active_news,
-            "updated_at": NEWS_CACHE.get("updated_at"),
-        },
+        "news": _news_summary(),
         "ai4trade": {
             "enabled": bool(AI4TRADE_TOKEN),
             "last_fetch_at": AI4TRADE_STATE.get("last_fetch_at"),
