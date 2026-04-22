@@ -13,6 +13,8 @@ extern bool DebugLogging = true;
 
 string lastSignalId = "";
 datetime lastProcessedAt = 0;
+int lastOpenTicket = -1;
+string lastOpenSignalId = "";
 
 string NormalizeBridgeSymbol(string symbol)
 {
@@ -44,8 +46,34 @@ int OnInit()
    return(INIT_SUCCEEDED);
 }
 
+void CheckClosedTradeReport()
+{
+   if(lastOpenTicket <= 0 || lastOpenSignalId == "")
+      return;
+
+   if(IsTicketStillOpen(lastOpenTicket))
+      return;
+
+   if(OrderSelect(lastOpenTicket, SELECT_BY_TICKET, MODE_HISTORY))
+   {
+      double pnl = OrderProfit() + OrderSwap() + OrderCommission();
+      string outcome = "BREAKEVEN";
+      if(pnl > 0.0)
+         outcome = "WIN";
+      else if(pnl < 0.0)
+         outcome = "LOSS";
+      SendExecutionCloseReport(lastOpenSignalId, lastOpenTicket, OrderLots(), OrderClosePrice(), outcome, pnl);
+      DebugPrint("reported closed trade ticket=" + IntegerToString(lastOpenTicket) + " outcome=" + outcome + " pnl=" + DoubleToString(pnl, 2));
+   }
+
+   lastOpenTicket = -1;
+   lastOpenSignalId = "";
+}
+
 void OnTick()
 {
+   CheckClosedTradeReport();
+
    if(!EnableTrading)
    {
       DebugPrint("skip: trading disabled");
@@ -141,6 +169,8 @@ void OnTick()
    {
       lastSignalId = signalId;
       lastProcessedAt = TimeCurrent();
+      lastOpenTicket = ticket;
+      lastOpenSignalId = signalId;
       Print("Trade opened for signal: ", signalId);
       SendExecutionReport(signalId, ticket, "OPEN", lot, price);
    }
@@ -174,6 +204,31 @@ void SendExecutionReport(string signalId, int ticket, string type, double lot, d
    string resultHeaders;
    StringToCharArray(body, data);
    WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+}
+
+void SendExecutionCloseReport(string signalId, int ticket, double lot, double price, string outcome, double pnl)
+{
+   string url = BridgeBaseUrl + "/execution/report";
+   string headers = "Authorization: Bearer " + BridgeToken + "\r\nContent-Type: application/json\r\n";
+   string body = StringFormat("{\"signal_id\":\"%s\",\"ticket\":%d,\"type\":\"CLOSE\",\"lot\":%G,\"price\":%G,\"outcome\":\"%s\",\"pnl\":%G}", signalId, ticket, lot, price, outcome, pnl);
+   char data[];
+   char result[];
+   string resultHeaders;
+   StringToCharArray(body, data);
+   WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+}
+
+bool IsTicketStillOpen(int ticket)
+{
+   for(int i = OrdersTotal()-1; i >= 0; i--)
+   {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+      {
+         if(OrderTicket() == ticket)
+            return true;
+      }
+   }
+   return false;
 }
 
 bool IsDailyLossLimitHit()
