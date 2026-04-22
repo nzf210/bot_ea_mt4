@@ -151,12 +151,14 @@ string HttpGetLatestSignal()
 
 string FlattenSignalResponse(string response)
 {
-   if(StringFind(response, '"signal":null') >= 0) return "";
-   if(StringFind(response, '"news_blocked":true') >= 0) {
+   if(StringFind(response, "\"signal\":null") >= 0) return "";
+   if(StringFind(response, "\"news_blocked\":true") >= 0)
+   {
       Print("Trading blocked by news filter");
       return "";
    }
-   if(StringFind(response, '"status":"BLOCKED_BY_NEWS"') >= 0) {
+   if(StringFind(response, "\"status\":\"BLOCKED_BY_NEWS\"") >= 0)
+   {
       Print("Signal blocked by news filter");
       return "";
    }
@@ -166,9 +168,9 @@ string FlattenSignalResponse(string response)
    string side = JsonGetNestedString(response, "signal", "side");
    double stopLoss = JsonGetNestedDouble(response, "signal", "stop_loss");
    double maxAge = JsonGetNestedDouble(response, "signal", "max_signal_age_sec");
-   double entryMin = JsonGetDoubleFromSection(response, '"entry_zone"', "min");
-   double entryMax = JsonGetDoubleFromSection(response, '"entry_zone"', "max");
-   double tp1 = JsonGetDoubleFromArrayObject(response, '"take_profit"', "price");
+   double entryMin = JsonGetDoubleFromSection(response, "\"entry_zone\"", "min");
+   double entryMax = JsonGetDoubleFromSection(response, "\"entry_zone\"", "max");
+   double tp1 = JsonGetDoubleFromArrayObject(response, "\"take_profit\"", "price");
 
    return StringFormat("{\"signal_id\":\"%s\",\"symbol\":\"%s\",\"side\":\"%s\",\"stop_loss\":%G,\"entry_zone_min\":%G,\"entry_zone_max\":%G,\"tp1_price\":%G,\"max_signal_age_sec\":%G}", signalId, symbol, side, stopLoss, entryMin, entryMax, tp1, maxAge);
 }
