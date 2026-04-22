@@ -13,6 +13,19 @@ extern bool EnableTrading = true;
 string lastSignalId = "";
 datetime lastProcessedAt = 0;
 
+string NormalizeBridgeSymbol(string symbol)
+{
+   symbol = StringUpper(symbol);
+   if(symbol == "GOLD") return "XAUUSD";
+   return symbol;
+}
+
+bool IsSupportedChartSymbol()
+{
+   string chartSymbol = NormalizeBridgeSymbol(Symbol());
+   return chartSymbol == "XAUUSD";
+}
+
 double DayStartEquity = 0;
 int ConsecutiveLosses = 0;
 datetime CooldownUntil = 0;
@@ -26,7 +39,7 @@ int OnInit()
 void OnTick()
 {
    if(!EnableTrading) return;
-   if(Symbol() != "XAUUSD") return;
+   if(!IsSupportedChartSymbol()) return;
    if(TimeCurrent() < CooldownUntil) return;
    if(IsDailyLossLimitHit()) return;
    
@@ -47,7 +60,7 @@ void OnTick()
    if(maxAge <= 0) maxAge = MaxSignalAgeSec;
 
    if(signalId == "" || signalId == lastSignalId) return;
-   if(symbol != "XAUUSD") return;
+   if(NormalizeBridgeSymbol(symbol) != NormalizeBridgeSymbol(Symbol())) return;
 
    int spread = (int)MarketInfo(Symbol(), MODE_SPREAD);
    if(spread > MaxSpreadPoints) return;
