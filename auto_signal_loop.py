@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
-from gemini_decider import decide_with_mock_gemini
+from gemini_decider import decide_trade
 
 BASE_DIR = os.path.dirname(__file__)
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -71,7 +71,7 @@ def main():
             if os.path.exists(SNAPSHOT_STORE):
                 data = json.loads(Path(SNAPSHOT_STORE).read_text(encoding='utf-8'))
                 for snap in data.get("snapshots", []):
-                    result = decide_with_mock_gemini(snap)
+                    result = decide_trade(snap)
                     if result.get("decision") in {"BUY", "SELL"}:
                         normalized_symbol = result.get("symbol", snap["symbol"])
                         key = f"{normalized_symbol}:{result['decision']}:{result['entry']}"
