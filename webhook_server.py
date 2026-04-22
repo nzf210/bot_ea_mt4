@@ -25,6 +25,10 @@ JOURNAL_STORE = os.getenv("JOURNAL_STORE", os.path.join(BASE_DIR, "journal.log")
 NEWS_CACHE_FILE = os.getenv("NEWS_CACHE_FILE", os.path.join(BASE_DIR, "news_cache.json"))
 AI4TRADE_TOKEN = os.getenv("AI4TRADE_TOKEN", "")
 AI4TRADE_AGENT_ID = os.getenv("AI4TRADE_AGENT_ID", "")
+AI4TRADE_REQUIRE_AGENT_MATCH = os.getenv("AI4TRADE_REQUIRE_AGENT_MATCH", "true").lower() in {"1", "true", "yes", "on"}
+AI4TRADE_ALLOWED_SYMBOLS = {
+    s.strip().upper() for s in os.getenv("AI4TRADE_ALLOWED_SYMBOLS", "XAUUSD").split(",") if s.strip()
+}
 AI4TRADE_FEED_URL = os.getenv("AI4TRADE_FEED_URL", "https://ai4trade.ai/api/signals/feed")
 AI4TRADE_POLL_SEC = int(os.getenv("AI4TRADE_POLL_SEC", "30"))
 AI4TRADE_MIN_CONFIDENCE = float(os.getenv("AI4TRADE_MIN_CONFIDENCE", "0.5"))
@@ -146,22 +150,36 @@ async def update_ai4trade_loop():
         _run_startup_checks()
         await asyncio.sleep(AI4TRADE_POLL_SEC)
 
-def _infer_xau_levels(side: str, entry_price: float, content: str):
-    stop_offset = 5.0
-    tp_offset = 8.0
+def _infer_price_levels(symbol: str, side: str, entry_price: float, content: str):
+    symbol = (symbol or "").upper()
     text = (content or "").lower()
-    if "scalp" in text:
-        stop_offset = 3.0
-        tp_offset = 5.0
-    elif "swing" in text:
-        stop_offset = 8.0
-        tp_offset = 12.0
-    elif "take-profit" in text or "tp" in text:
-        tp_offset = 10.0
+
+    if symbol == "XAUUSD":
+        stop_offset = 5.0
+        tp_offset = 8.0
+        if "scalp" in text:
+            stop_offset = 3.0
+            tp_offset = 5.0
+        elif "swing" in text:
+            stop_offset = 8.0
+            tp_offset = 12.0
+        elif "take-profit" in text or "tp" in text:
+            tp_offset = 10.0
+    else:
+        stop_offset = 0.0030
+        tp_offset = 0.0050
+        if "scalp" in text:
+            stop_offset = 0.0015
+            tp_offset = 0.0025
+        elif "swing" in text:
+            stop_offset = 0.0050
+            tp_offset = 0.0080
+        elif "take-profit" in text or "tp" in text:
+            tp_offset = 0.0060
 
     stop_loss = entry_price - stop_offset if side == "BUY" else entry_price + stop_offset
     tp1 = entry_price + tp_offset if side == "BUY" else entry_price - tp_offset
-    return round(stop_loss, 2), round(tp1, 2)
+    return round(stop_loss, 5 if symbol != "XAUUSD" else 2), round(tp1, 5 if symbol != "XAUUSD" else 2)
 
 def convert_ai4trade_signal(signals: list):
     for item in signals:
@@ -181,7 +199,7 @@ def convert_ai4trade_signal(signals: list):
             trace["reason"] = "not_a_dict"
             _append_ai4trade_dry_run(trace)
             continue
-        if AI4TRADE_AGENT_ID and str(item.get("agent_id")) != str(AI4TRADE_AGENT_ID):
+        if AI4TRADE_REQUIRE_AGENT_MATCH and AI4TRADE_AGENT_ID and str(item.get("agent_id")) != str(AI4TRADE_AGENT_ID):
             trace["decision"] = "reject"
             trace["reason"] = "agent_id_mismatch"
             _append_ai4trade_dry_run(trace)
@@ -192,9 +210,10 @@ def convert_ai4trade_signal(signals: list):
             _append_ai4trade_dry_run(trace)
             continue
         symbol = (item.get("symbol") or "").upper()
-        if symbol != "XAUUSD":
+        if symbol not in AI4TRADE_ALLOWED_SYMBOLS:
             trace["decision"] = "reject"
             trace["reason"] = "unsupported_symbol"
+            trace["allowed_symbols"] = sorted(list(AI4TRADE_ALLOWED_SYMBOLS))
             _append_ai4trade_dry_run(trace)
             continue
         side = (item.get("side") or item.get("action") or "").upper()
@@ -220,8 +239,8 @@ def convert_ai4trade_signal(signals: list):
         timestamp_utc = item.get("executed_at") or item.get("created_at") or datetime.now(timezone.utc).isoformat()
         content = item.get("content") or ""
         confidence = 0.7 if item.get("message_type") == "operation" else AI4TRADE_MIN_CONFIDENCE
-        stop_loss, tp1 = _infer_xau_levels(side, entry_price, content)
-        zone_size = 0.3 if confidence < 0.8 else 0.2
+        stop_loss, tp1 = _infer_price_levels(symbol, side, entry_price, content)
+        zone_size = (0.3 if confidence < 0.8 else 0.2) if symbol == "XAUUSD" else (0.0005 if confidence < 0.8 else 0.0003)
         converted = {
             "signal_id": f"ai4trade-{signal_id}",
             "timestamp_utc": timestamp_utc.replace("Z", "+00:00").replace("+00:00", "Z"),
@@ -401,6 +420,8 @@ def ai4trade_status(authorization: Optional[str] = Header(default=None)):
         "ok": True,
         "enabled": bool(AI4TRADE_TOKEN),
         "agent_id": AI4TRADE_AGENT_ID,
+        "require_agent_match": AI4TRADE_REQUIRE_AGENT_MATCH,
+        "allowed_symbols": sorted(list(AI4TRADE_ALLOWED_SYMBOLS)),
         "feed_url": AI4TRADE_FEED_URL,
         "poll_sec": AI4TRADE_POLL_SEC,
         "state": AI4TRADE_STATE,

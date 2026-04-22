@@ -96,6 +96,8 @@ Tambahkan ke `.env`:
 ```env
 AI4TRADE_TOKEN=token-agent-ai4trade
 AI4TRADE_AGENT_ID=3065
+AI4TRADE_REQUIRE_AGENT_MATCH=true
+AI4TRADE_ALLOWED_SYMBOLS=XAUUSD,GBPUSD,EURUSD
 AI4TRADE_FEED_URL=https://ai4trade.ai/api/signals/feed
 AI4TRADE_POLL_SEC=30
 ```
@@ -103,10 +105,11 @@ AI4TRADE_POLL_SEC=30
 Catatan:
 - schema native `ai4trade.ai` tidak sama dengan schema internal bridge
 - adapter akan mencoba mapping signal feed ke format MT4 bridge
-- untuk saat ini adapter hanya cocok untuk signal `XAUUSD` dengan `BUY`/`SELL`
+- kamu bisa pilih strict mode dengan `AI4TRADE_REQUIRE_AGENT_MATCH=true`
+- kamu bisa whitelist pair lewat `AI4TRADE_ALLOWED_SYMBOLS=XAUUSD,GBPUSD,EURUSD`
 - raw payload terakhir akan disimpan ke file agar mudah debug
 - tersedia dry-run log untuk menjelaskan kenapa signal dipilih atau ditolak
-- SL/TP sekarang memakai heuristik yang sedikit lebih spesifik untuk konteks XAU, tapi tetap belum sebaik signal execution-ready asli
+- heuristik level harga sekarang mendukung XAUUSD dan pair forex utama, tapi tetap belum sebaik signal execution-ready asli
 
 Lihat juga: `ai4trade_adapter.md`
 
