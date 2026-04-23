@@ -56,6 +56,15 @@ datetime CooldownUntil = 0;
 datetime ParseIsoTimestamp(string ts)
 {
    string s = ts;
+   int dotPos = StringFind(s, ".");
+   int zPos = StringFind(s, "Z");
+   if(dotPos >= 0)
+   {
+      if(zPos > dotPos)
+         s = StringSubstr(s, 0, dotPos) + "Z";
+      else
+         s = StringSubstr(s, 0, dotPos);
+   }
    StringReplace(s, "T", " ");
    StringReplace(s, "Z", "");
    return StringToTime(s);
@@ -378,7 +387,7 @@ void OnTick()
    string json = HttpGetLatestSignal();
    if(StringLen(json) < 20)
    {
-      DebugPrint("skip: empty or invalid signal response");
+      DebugPrint("skip: empty flattened signal payload");
       return;
    }
 
@@ -405,12 +414,22 @@ void OnTick()
       return;
    }
    datetime signalTs = ParseIsoTimestamp(timestampUtc);
+   if(StringLen(timestampUtc) > 0 && signalTs <= 0)
+   {
+      DebugPrint("skip: invalid signal timestamp raw=" + timestampUtc);
+      return;
+   }
    if(signalTs > 0)
    {
       int signalAge = (int)(TimeCurrent() - signalTs);
+      if(signalAge < 0)
+      {
+         DebugPrint("skip: signal timestamp is in the future age=" + IntegerToString(signalAge) + " raw=" + timestampUtc);
+         return;
+      }
       if(signalAge > maxAge)
       {
-         DebugPrint("skip: stale signal age=" + IntegerToString(signalAge) + " max=" + IntegerToString(maxAge));
+         DebugPrint("skip: stale signal age=" + IntegerToString(signalAge) + " max=" + IntegerToString(maxAge) + " raw=" + timestampUtc);
          return;
       }
    }
