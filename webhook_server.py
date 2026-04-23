@@ -190,6 +190,10 @@ SNAPSHOT_STATE = {
     "last_market_toxicity_score": None,
     "last_market_toxicity_penalty": None,
     "last_market_toxicity_reason": None,
+    "last_market_mode": None,
+    "last_market_mode_reason": None,
+    "last_market_mode_threshold_bonus": None,
+    "last_market_mode_confidence_penalty": None,
     "last_trade_outcome": None,
     "last_loss_side": None,
     "last_loss_at": None,
@@ -519,6 +523,7 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
     decision_meta = decision_meta or {}
     trend_regime_score = float(decision_meta.get("trend_regime_score") or 0.0)
     session_bucket = str(decision_meta.get("session_bucket") or "UNKNOWN").upper()
+    market_mode = str(decision_meta.get("market_mode") or "UNKNOWN").upper()
     conservative_factor = 1.0
     if trend_regime_score and trend_regime_score < 0.7:
         conservative_factor = 1.12
@@ -546,6 +551,11 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
         elif session_bucket == "NY":
             geometry_sl_mult = NY_SL_MULT
             geometry_tp_mult = NY_TP_MULT
+
+    if market_mode == "TOXIC":
+        conservative_factor *= 1.15
+    elif market_mode == "TRENDING":
+        conservative_factor *= 0.97
 
     trend_geometry_sl_mult = 1.0
     trend_geometry_tp_mult = 1.0
@@ -598,6 +608,14 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
             trailing_start_r_mult = NY_TRAILING_START_R_MULT
             trailing_step_r_mult = NY_TRAILING_STEP_R_MULT
 
+    signal_ttl = 180
+    if market_mode == "TRENDING":
+        signal_ttl = 120
+    elif market_mode == "QUIET":
+        signal_ttl = 240
+    elif market_mode == "CHOPPY":
+        signal_ttl = 90
+
     return {
         "signal_id": f"local-ai-{symbol.lower()}-{int(datetime.now(timezone.utc).timestamp())}",
         "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -612,11 +630,13 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
         ],
         "confidence": confidence,
         "invalidation": f"AI loop: {reason}",
-        "max_signal_age_sec": 180,
+        "max_signal_age_sec": signal_ttl,
         "market_context": {
             "spread_max_points": spread_max_points,
             "session": "LOCAL_AI_QUEUE",
             "news_block_minutes": DEFAULT_NEWS_BLOCK_MINUTES,
+            "market_mode": market_mode,
+            "signal_ttl_sec": signal_ttl,
             "entry_zone_size": round(zone, digits),
             "entry_zone_session_mult": round(session_zone_mult, 4),
             "geometry_sl_session_mult": round(geometry_sl_mult, 4),
@@ -870,6 +890,10 @@ async def snapshot_worker_loop():
                 SNAPSHOT_STATE["last_market_toxicity_score"] = result.get("market_toxicity_score")
                 SNAPSHOT_STATE["last_market_toxicity_penalty"] = result.get("market_toxicity_penalty")
                 SNAPSHOT_STATE["last_market_toxicity_reason"] = result.get("market_toxicity_reason")
+                SNAPSHOT_STATE["last_market_mode"] = result.get("market_mode")
+                SNAPSHOT_STATE["last_market_mode_reason"] = result.get("market_mode_reason")
+                SNAPSHOT_STATE["last_market_mode_threshold_bonus"] = result.get("market_mode_threshold_bonus")
+                SNAPSHOT_STATE["last_market_mode_confidence_penalty"] = result.get("market_mode_confidence_penalty")
                 SNAPSHOT_STATE["last_journal_reason_penalty"] = result.get("journal_reason_penalty")
                 SNAPSHOT_STATE["last_journal_reason_penalty_reason"] = result.get("journal_reason_penalty_reason")
                 SNAPSHOT_STATE["last_journal_reason_loss_rate"] = result.get("journal_reason_loss_rate")

@@ -82,6 +82,11 @@ QUALITY_TIERING_ENABLED = os.getenv("QUALITY_TIERING_ENABLED", "true").lower() i
 QUALITY_TIER_A_MIN = float(os.getenv("QUALITY_TIER_A_MIN", "0.78"))
 QUALITY_TIER_B_MIN = float(os.getenv("QUALITY_TIER_B_MIN", "0.68"))
 QUALITY_TIER_C_BLOCK_ENABLED = os.getenv("QUALITY_TIER_C_BLOCK_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+MARKET_MODE_ENABLED = os.getenv("MARKET_MODE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+MARKET_MODE_QUIET_RANGE_FACTOR = float(os.getenv("MARKET_MODE_QUIET_RANGE_FACTOR", "0.85"))
+MARKET_MODE_TOXIC_SPREAD_FACTOR = float(os.getenv("MARKET_MODE_TOXIC_SPREAD_FACTOR", "0.75"))
+MARKET_MODE_TRENDING_ALIGNMENT_MIN = int(os.getenv("MARKET_MODE_TRENDING_ALIGNMENT_MIN", "4"))
+MARKET_MODE_THRESHOLD_BONUS_MAX = float(os.getenv("MARKET_MODE_THRESHOLD_BONUS_MAX", "0.05"))
 GEMINI_RUNTIME_STATE = {
     "enabled": GEMINI_ENABLED,
     "model": GEMINI_MODEL,
@@ -129,6 +134,41 @@ def _candle_direction(candle: dict):
     if candle["close"] < candle["open"]:
         return "SELL"
     return "FLAT"
+
+
+def _market_mode(snapshot: dict):
+    if not MARKET_MODE_ENABLED:
+        return {"mode": "DISABLED", "threshold_bonus": 0.0, "confidence_penalty": 0.0, "reason": "market_mode_disabled"}
+    candles = _extract_recent_candles(snapshot)
+    symbol = normalize_symbol(snapshot.get("symbol"))
+    spread_points = float(snapshot.get("spread_points") or 0.0)
+    max_spread = float(get_max_spread(symbol) or 1.0)
+    spread_factor = min(max(spread_points / max_spread, 0.0), 2.0)
+    if not candles:
+        return {"mode": "UNKNOWN", "threshold_bonus": 0.0, "confidence_penalty": 0.0, "reason": "market_mode_no_candles"}
+
+    ranges = [max(float(c["high"]) - float(c["low"]), 0.0) for c in candles[:5]]
+    avg_range = sum(ranges) / max(len(ranges), 1)
+    current_range = ranges[0] if ranges else 0.0
+    body_ratios = []
+    directions = []
+    for candle in candles[:5]:
+        candle_range = max(candle["high"] - candle["low"], 0.00001)
+        body_ratios.append(abs(candle["close"] - candle["open"]) / candle_range)
+        directions.append(_candle_direction(candle))
+    avg_body_ratio = sum(body_ratios) / max(len(body_ratios), 1)
+    dominant_dir = max(["BUY", "SELL", "FLAT"], key=lambda d: directions.count(d))
+    directional_consistency = directions.count(dominant_dir) / max(len(directions), 1)
+
+    if spread_factor >= MARKET_MODE_TOXIC_SPREAD_FACTOR:
+        return {"mode": "TOXIC", "threshold_bonus": MARKET_MODE_THRESHOLD_BONUS_MAX, "confidence_penalty": 0.08, "reason": f"spread_factor={spread_factor:.2f}"}
+    if avg_range > 0 and current_range <= avg_range * MARKET_MODE_QUIET_RANGE_FACTOR and avg_body_ratio < 0.38:
+        return {"mode": "QUIET", "threshold_bonus": 0.01, "confidence_penalty": 0.02, "reason": f"range={current_range:.2f}|avg={avg_range:.2f}|body={avg_body_ratio:.2f}"}
+    if directional_consistency >= 0.8 and directions.count(dominant_dir) >= MARKET_MODE_TRENDING_ALIGNMENT_MIN and avg_body_ratio >= 0.45:
+        return {"mode": "TRENDING", "threshold_bonus": -0.02, "confidence_penalty": 0.0, "reason": f"dir={dominant_dir}|consistency={directional_consistency:.2f}|body={avg_body_ratio:.2f}"}
+    if avg_body_ratio < 0.33 and directional_consistency < 0.6:
+        return {"mode": "CHOPPY", "threshold_bonus": 0.03, "confidence_penalty": 0.05, "reason": f"consistency={directional_consistency:.2f}|body={avg_body_ratio:.2f}"}
+    return {"mode": "BALANCED", "threshold_bonus": 0.0, "confidence_penalty": 0.0, "reason": f"consistency={directional_consistency:.2f}|body={avg_body_ratio:.2f}|spread={spread_factor:.2f}"}
 
 
 def _session_gate(snapshot: dict):
@@ -623,6 +663,10 @@ def prefilter(snapshot: dict):
     if spread > max_spread:
         return {"pass": False, "reason": f"spread_too_high:{spread}>{max_spread}"}
 
+    market_mode = _market_mode(snapshot)
+    if market_mode.get("mode") == "TOXIC":
+        return {"pass": False, "reason": f"market_mode_block:{market_mode.get('reason')}"}
+
     session = _session_gate(snapshot)
     if not session["pass"]:
         return {"pass": False, "reason": session["reason"]}
@@ -704,11 +748,15 @@ def prefilter(snapshot: dict):
         "pass": True,
         "bias": bias,
         "entry": entry,
-        "reason": f"basic_candle_bias|{session['reason']}|{volatility['reason']}|{structure['reason']}",
+        "reason": f"basic_candle_bias|{session['reason']}|{volatility['reason']}|{structure['reason']}|market_mode:{market_mode.get('mode')}",
         "recent_structure": structure['reason'],
         "recent_candles_used": len(_extract_recent_candles(snapshot)),
         "session_reason": session['reason'],
         "volatility_reason": volatility['reason'],
+        "market_mode": market_mode.get("mode"),
+        "market_mode_reason": market_mode.get("reason"),
+        "market_mode_threshold_bonus": market_mode.get("threshold_bonus"),
+        "market_mode_confidence_penalty": market_mode.get("confidence_penalty"),
         "spread_quality": round(spread_quality, 4),
         "late_ratio": round(late_ratio, 4),
         "body_ratio": round(body_ratio, 4),
@@ -805,6 +853,7 @@ def _score_prefilter_confidence(snapshot: dict, pf: dict) -> float:
     if trend_regime_alignment >= 4:
         confidence += 0.04
     confidence -= float(pf.get("trend_regime_soft_penalty") or 0.0)
+    confidence -= float(pf.get("market_mode_confidence_penalty") or 0.0)
 
     outcome_penalty = float(pf.get("outcome_penalty") or 0.0)
     if outcome_penalty > 0:
@@ -925,6 +974,12 @@ def _adaptive_thresholds(pf: dict):
         penalty += 0.02
     elif trend_regime_alignment >= 4:
         bonus += 0.005
+
+    threshold_bonus = float(pf.get("market_mode_threshold_bonus") or 0.0)
+    if threshold_bonus >= 0:
+        penalty += threshold_bonus
+    else:
+        bonus += abs(threshold_bonus)
 
     penalty += float(pf.get("outcome_penalty") or 0.0)
     penalty += float(pf.get("market_toxicity_penalty") or 0.0)
