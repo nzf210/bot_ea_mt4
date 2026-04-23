@@ -67,7 +67,26 @@ datetime ParseIsoTimestamp(string ts)
    }
    StringReplace(s, "T", " ");
    StringReplace(s, "Z", "");
-   return StringToTime(s);
+   if(StringLen(s) < 19)
+      return 0;
+
+   int year = StrToInteger(StringSubstr(s, 0, 4));
+   int month = StrToInteger(StringSubstr(s, 5, 2));
+   int day = StrToInteger(StringSubstr(s, 8, 2));
+   int hour = StrToInteger(StringSubstr(s, 11, 2));
+   int minute = StrToInteger(StringSubstr(s, 14, 2));
+   int second = StrToInteger(StringSubstr(s, 17, 2));
+   if(year <= 0 || month <= 0 || day <= 0)
+      return 0;
+
+   MqlDateTime dt;
+   dt.year = year;
+   dt.mon = month;
+   dt.day = day;
+   dt.hour = hour;
+   dt.min = minute;
+   dt.sec = second;
+   return StructToTime(dt);
 }
 
 string PersistKey(string suffix)
@@ -421,15 +440,15 @@ void OnTick()
    }
    if(signalTs > 0)
    {
-      int signalAge = (int)(TimeCurrent() - signalTs);
+      int signalAge = (int)(TimeGMT() - signalTs);
       if(signalAge < 0)
       {
-         DebugPrint("skip: signal timestamp is in the future age=" + IntegerToString(signalAge) + " raw=" + timestampUtc);
+         DebugPrint("skip: signal timestamp is in the future age=" + IntegerToString(signalAge) + " raw=" + timestampUtc + " gmt_now=" + TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
          return;
       }
       if(signalAge > maxAge)
       {
-         DebugPrint("skip: stale signal age=" + IntegerToString(signalAge) + " max=" + IntegerToString(maxAge) + " raw=" + timestampUtc);
+         DebugPrint("skip: stale signal age=" + IntegerToString(signalAge) + " max=" + IntegerToString(maxAge) + " raw=" + timestampUtc + " gmt_now=" + TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
          return;
       }
    }
