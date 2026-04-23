@@ -192,19 +192,13 @@ def _recent_structure_gate(snapshot: dict):
     soft_penalty = 0.0
     soft_reason = None
     if latest_dir != prev1_dir:
-        if latest_body_ratio >= MISALIGNED_STRUCTURE_STRONG_BODY_THRESHOLD:
-            soft_penalty = MISALIGNED_STRUCTURE_PENALTY
-            soft_reason = f"latest_prev_misaligned_soft:{latest_dir}_vs_{prev1_dir}"
-        else:
-            return {"pass": False, "reason": f"latest_prev_misaligned:{latest_dir}_vs_{prev1_dir}"}
+        soft_penalty = max(soft_penalty, MISALIGNED_STRUCTURE_PENALTY)
+        soft_reason = f"latest_prev_misaligned_soft:{latest_dir}_vs_{prev1_dir}"
 
     aligned_count = len([d for d in [latest_dir, prev1_dir, prev2_dir] if d == latest_dir])
     if aligned_count < 2:
-        if latest_body_ratio >= INSUFFICIENT_ALIGNMENT_STRONG_BODY_THRESHOLD:
-            soft_penalty = max(soft_penalty, INSUFFICIENT_ALIGNMENT_SOFT_PENALTY)
-            soft_reason = (soft_reason + "|" if soft_reason else "") + "insufficient_directional_alignment_soft"
-        else:
-            return {"pass": False, "reason": "insufficient_directional_alignment"}
+        soft_penalty = max(soft_penalty, INSUFFICIENT_ALIGNMENT_SOFT_PENALTY)
+        soft_reason = (soft_reason + "|" if soft_reason else "") + "insufficient_directional_alignment_soft"
 
     if latest_body_ratio < STRONG_BODY_RATIO and prev1_body_ratio < STRONG_BODY_RATIO:
         return {"pass": False, "reason": f"weak_structure_impulse:{latest_body_ratio:.2f},{prev1_body_ratio:.2f}"}
