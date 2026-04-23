@@ -30,10 +30,14 @@ EXHAUSTION_BODY_RATIO = float(os.getenv("EXHAUSTION_BODY_RATIO", "0.72"))
 NO_CHASE_CLOSE_EXTREME_RATIO = float(os.getenv("NO_CHASE_CLOSE_EXTREME_RATIO", "0.12"))
 MIN_STRUCTURE_BODY_RATIO = float(os.getenv("MIN_STRUCTURE_BODY_RATIO", "0.28"))
 STRONG_BODY_RATIO = float(os.getenv("STRONG_BODY_RATIO", "0.45"))
+MISALIGNED_STRUCTURE_PENALTY = float(os.getenv("MISALIGNED_STRUCTURE_PENALTY", "0.05"))
+MISALIGNED_STRUCTURE_STRONG_BODY_THRESHOLD = float(os.getenv("MISALIGNED_STRUCTURE_STRONG_BODY_THRESHOLD", "0.48"))
 TREND_REGIME_MIN_BODY_RATIO = float(os.getenv("TREND_REGIME_MIN_BODY_RATIO", "0.22"))
 TREND_REGIME_ALIGNMENT_MIN = int(os.getenv("TREND_REGIME_ALIGNMENT_MIN", "3"))
 TREND_REGIME_SCORE_MIN = float(os.getenv("TREND_REGIME_SCORE_MIN", "0.58"))
 TREND_REGIME_PULLBACK_TOLERANCE = float(os.getenv("TREND_REGIME_PULLBACK_TOLERANCE", "0.38"))
+TREND_REGIME_SOFT_ALIGNMENT_ALLOWED = int(os.getenv("TREND_REGIME_SOFT_ALIGNMENT_ALLOWED", "2"))
+TREND_REGIME_SOFT_ALIGNMENT_PENALTY = float(os.getenv("TREND_REGIME_SOFT_ALIGNMENT_PENALTY", "0.06"))
 DETERMINISTIC_SCORE_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_TRADE_THRESHOLD", "0.68"))
 DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD", "0.56"))
 ADAPTIVE_THRESHOLD_ENABLED = os.getenv("ADAPTIVE_THRESHOLD_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
@@ -183,8 +187,14 @@ def _recent_structure_gate(snapshot: dict):
     prev2_dir = _candle_direction(prev2)
     if "FLAT" in {latest_dir, prev1_dir}:
         return {"pass": False, "reason": "flat_structure_component"}
+    soft_penalty = 0.0
+    soft_reason = None
     if latest_dir != prev1_dir:
-        return {"pass": False, "reason": f"latest_prev_misaligned:{latest_dir}_vs_{prev1_dir}"}
+        if latest_body_ratio >= MISALIGNED_STRUCTURE_STRONG_BODY_THRESHOLD:
+            soft_penalty = MISALIGNED_STRUCTURE_PENALTY
+            soft_reason = f"latest_prev_misaligned_soft:{latest_dir}_vs_{prev1_dir}"
+        else:
+            return {"pass": False, "reason": f"latest_prev_misaligned:{latest_dir}_vs_{prev1_dir}"}
 
     aligned_count = len([d for d in [latest_dir, prev1_dir, prev2_dir] if d == latest_dir])
     if aligned_count < 2:
@@ -202,6 +212,8 @@ def _recent_structure_gate(snapshot: dict):
         "latest_body_ratio": round(latest_body_ratio, 4),
         "prev1_body_ratio": round(prev1_body_ratio, 4),
         "prev2_body_ratio": round(prev2_body_ratio, 4),
+        "soft_penalty": round(soft_penalty, 4),
+        "soft_reason": soft_reason,
     }
 
 
@@ -230,8 +242,14 @@ def _trend_regime_gate(snapshot: dict, bias: str):
     regime_score = (aligned_count * 0.16) + (strong_aligned * 0.12) + (close_position * 0.18) - (opposing_count * 0.14)
     regime_score = max(0.0, min(regime_score, 1.0))
 
+    soft_penalty = 0.0
+    soft_reason = None
     if aligned_count < TREND_REGIME_ALIGNMENT_MIN:
-        return {"pass": False, "reason": f"trend_regime_alignment_weak:{aligned_count}/5", "score": round(regime_score, 4), "aligned_count": aligned_count, "opposing_count": opposing_count}
+        if aligned_count >= TREND_REGIME_SOFT_ALIGNMENT_ALLOWED and regime_score >= max(TREND_REGIME_SCORE_MIN - 0.08, 0.0):
+            soft_penalty = TREND_REGIME_SOFT_ALIGNMENT_PENALTY
+            soft_reason = f"trend_regime_alignment_soft:{aligned_count}/5"
+        else:
+            return {"pass": False, "reason": f"trend_regime_alignment_weak:{aligned_count}/5", "score": round(regime_score, 4), "aligned_count": aligned_count, "opposing_count": opposing_count}
     if strong_aligned < 2:
         return {"pass": False, "reason": f"trend_regime_impulse_weak:{strong_aligned}", "score": round(regime_score, 4), "aligned_count": aligned_count, "opposing_count": opposing_count}
     if close_position < TREND_REGIME_PULLBACK_TOLERANCE:
@@ -247,6 +265,8 @@ def _trend_regime_gate(snapshot: dict, bias: str):
         "opposing_count": opposing_count,
         "strong_aligned": strong_aligned,
         "close_position": round(close_position, 4),
+        "soft_penalty": round(soft_penalty, 4),
+        "soft_reason": soft_reason,
     }
 
 
@@ -677,6 +697,9 @@ def prefilter(snapshot: dict):
     if symbol == "XAUUSD" and spread_quality < 0.25:
         return {"pass": False, "reason": f"poor_spread_quality:{spread_quality:.2f}"}
 
+    structure_soft_penalty = float(structure.get("soft_penalty") or 0.0)
+    trend_soft_penalty = float(trend_regime.get("soft_penalty") or 0.0)
+
     return {
         "pass": True,
         "bias": bias,
@@ -694,12 +717,16 @@ def prefilter(snapshot: dict):
         "structure_alignment": structure.get("aligned_count"),
         "latest_structure_body_ratio": structure.get("latest_body_ratio"),
         "prev1_structure_body_ratio": structure.get("prev1_body_ratio"),
+        "structure_soft_penalty": structure_soft_penalty,
+        "structure_soft_reason": structure.get("soft_reason"),
         "trend_regime_reason": trend_regime.get("reason"),
         "trend_regime_score": trend_regime.get("score"),
         "trend_regime_alignment": trend_regime.get("aligned_count"),
         "trend_regime_opposing_count": trend_regime.get("opposing_count"),
         "trend_regime_strong_aligned": trend_regime.get("strong_aligned"),
         "trend_regime_close_position": trend_regime.get("close_position"),
+        "trend_regime_soft_penalty": trend_soft_penalty,
+        "trend_regime_soft_reason": trend_regime.get("soft_reason"),
         "outcome_penalty": outcome_penalty.get("penalty"),
         "outcome_penalty_reason": outcome_penalty.get("reason"),
         "same_side_losses": outcome_penalty.get("same_side_losses"),
@@ -767,6 +794,8 @@ def _score_prefilter_confidence(snapshot: dict, pf: dict) -> float:
     elif structure_alignment == 2:
         confidence += 0.03
 
+    confidence -= float(pf.get("structure_soft_penalty") or 0.0)
+
     trend_regime_score = float(pf.get("trend_regime_score") or 0.0)
     trend_regime_alignment = int(pf.get("trend_regime_alignment") or 0)
     if trend_regime_score >= 0.7:
@@ -775,6 +804,7 @@ def _score_prefilter_confidence(snapshot: dict, pf: dict) -> float:
         confidence -= 0.05
     if trend_regime_alignment >= 4:
         confidence += 0.04
+    confidence -= float(pf.get("trend_regime_soft_penalty") or 0.0)
 
     outcome_penalty = float(pf.get("outcome_penalty") or 0.0)
     if outcome_penalty > 0:
