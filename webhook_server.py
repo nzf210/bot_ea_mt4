@@ -56,12 +56,63 @@ MAX_CONSECUTIVE_LOSSES_PER_SIDE = int(os.getenv("MAX_CONSECUTIVE_LOSSES_PER_SIDE
 XAU_ENTRY_ZONE_MIN = float(os.getenv("XAU_ENTRY_ZONE_MIN", "0.5"))
 XAU_ENTRY_ZONE_MAX = float(os.getenv("XAU_ENTRY_ZONE_MAX", "1.5"))
 XAU_ENTRY_ZONE_RANGE_MULT = float(os.getenv("XAU_ENTRY_ZONE_RANGE_MULT", "0.35"))
+XAU_SL_MIN = float(os.getenv("XAU_SL_MIN", "4.0"))
+XAU_SL_MAX = float(os.getenv("XAU_SL_MAX", "9.0"))
+XAU_SL_RANGE_MULT = float(os.getenv("XAU_SL_RANGE_MULT", "2.8"))
+XAU_TP1_MIN = float(os.getenv("XAU_TP1_MIN", "6.0"))
+XAU_TP1_RANGE_MULT = float(os.getenv("XAU_TP1_RANGE_MULT", "3.8"))
+XAU_TP2_MIN = float(os.getenv("XAU_TP2_MIN", "10.0"))
+XAU_TP2_RANGE_MULT = float(os.getenv("XAU_TP2_RANGE_MULT", "5.8"))
 FOREX_ENTRY_ZONE_MIN = float(os.getenv("FOREX_ENTRY_ZONE_MIN", "0.0005"))
 FOREX_ENTRY_ZONE_MAX = float(os.getenv("FOREX_ENTRY_ZONE_MAX", "0.0015"))
 FOREX_ENTRY_ZONE_RANGE_MULT = float(os.getenv("FOREX_ENTRY_ZONE_RANGE_MULT", "0.25"))
+FOREX_SL_MIN = float(os.getenv("FOREX_SL_MIN", "0.0025"))
+FOREX_SL_MAX = float(os.getenv("FOREX_SL_MAX", "0.0065"))
+FOREX_SL_RANGE_MULT = float(os.getenv("FOREX_SL_RANGE_MULT", "2.8"))
+FOREX_TP1_MIN = float(os.getenv("FOREX_TP1_MIN", "0.0045"))
+FOREX_TP1_RANGE_MULT = float(os.getenv("FOREX_TP1_RANGE_MULT", "3.8"))
+FOREX_TP2_MIN = float(os.getenv("FOREX_TP2_MIN", "0.0075"))
+FOREX_TP2_RANGE_MULT = float(os.getenv("FOREX_TP2_RANGE_MULT", "5.8"))
 NEWS_URL = os.getenv("NEWS_CALENDAR_URL", "https://nfs.faireconomy.media/ff_calendar_thisweek.json")
 NEWS_REFRESH_SEC = int(os.getenv("NEWS_REFRESH_SEC", "3600"))
 DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
+TRAILING_ENABLED = os.getenv("TRAILING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+BREAK_EVEN_R_MULT = float(os.getenv("BREAK_EVEN_R_MULT", "1.0"))
+BREAK_EVEN_BUFFER_R_MULT = float(os.getenv("BREAK_EVEN_BUFFER_R_MULT", "0.08"))
+TRAILING_START_R_MULT = float(os.getenv("TRAILING_START_R_MULT", "1.5"))
+TRAILING_STEP_R_MULT = float(os.getenv("TRAILING_STEP_R_MULT", "0.5"))
+TRAILING_SL_R_MULT = float(os.getenv("TRAILING_SL_R_MULT", "1.0"))
+SLIPPAGE_COOLDOWN_ENABLED = os.getenv("SLIPPAGE_COOLDOWN_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+SLIPPAGE_COOLDOWN_WINDOW_SEC = int(os.getenv("SLIPPAGE_COOLDOWN_WINDOW_SEC", "10800"))
+SLIPPAGE_COOLDOWN_THRESHOLD = int(os.getenv("SLIPPAGE_COOLDOWN_THRESHOLD", "2"))
+SLIPPAGE_COOLDOWN_SEC = int(os.getenv("SLIPPAGE_COOLDOWN_SEC", "3600"))
+SESSION_BUCKET_COOLDOWN_ENABLED = os.getenv("SESSION_BUCKET_COOLDOWN_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+SESSION_BUCKET_COOLDOWN_THRESHOLD = int(os.getenv("SESSION_BUCKET_COOLDOWN_THRESHOLD", "2"))
+SESSION_BUCKET_COOLDOWN_SEC = int(os.getenv("SESSION_BUCKET_COOLDOWN_SEC", "5400"))
+LOCAL_ONLY_MODE = os.getenv("LOCAL_ONLY_MODE", "true").lower() in {"1", "true", "yes", "on"}
+ADAPTIVE_TRAILING_ENABLED = os.getenv("ADAPTIVE_TRAILING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+ASIA_TRAILING_START_R_MULT = float(os.getenv("ASIA_TRAILING_START_R_MULT", "1.8"))
+ASIA_TRAILING_STEP_R_MULT = float(os.getenv("ASIA_TRAILING_STEP_R_MULT", "0.6"))
+LONDON_TRAILING_START_R_MULT = float(os.getenv("LONDON_TRAILING_START_R_MULT", "1.4"))
+LONDON_TRAILING_STEP_R_MULT = float(os.getenv("LONDON_TRAILING_STEP_R_MULT", "0.45"))
+NY_TRAILING_START_R_MULT = float(os.getenv("NY_TRAILING_START_R_MULT", "1.3"))
+NY_TRAILING_STEP_R_MULT = float(os.getenv("NY_TRAILING_STEP_R_MULT", "0.4"))
+ADAPTIVE_ENTRY_ZONE_ENABLED = os.getenv("ADAPTIVE_ENTRY_ZONE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+ASIA_ENTRY_ZONE_MULT = float(os.getenv("ASIA_ENTRY_ZONE_MULT", "0.85"))
+LONDON_ENTRY_ZONE_MULT = float(os.getenv("LONDON_ENTRY_ZONE_MULT", "1.0"))
+NY_ENTRY_ZONE_MULT = float(os.getenv("NY_ENTRY_ZONE_MULT", "1.1"))
+ADAPTIVE_GEOMETRY_ENABLED = os.getenv("ADAPTIVE_GEOMETRY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+ASIA_SL_MULT = float(os.getenv("ASIA_SL_MULT", "0.95"))
+ASIA_TP_MULT = float(os.getenv("ASIA_TP_MULT", "0.92"))
+LONDON_SL_MULT = float(os.getenv("LONDON_SL_MULT", "1.0"))
+LONDON_TP_MULT = float(os.getenv("LONDON_TP_MULT", "1.0"))
+NY_SL_MULT = float(os.getenv("NY_SL_MULT", "1.08"))
+NY_TP_MULT = float(os.getenv("NY_TP_MULT", "1.12"))
+TREND_GEOMETRY_ADAPTIVE_ENABLED = os.getenv("TREND_GEOMETRY_ADAPTIVE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+WEAK_TREND_SL_MULT = float(os.getenv("WEAK_TREND_SL_MULT", "1.08"))
+WEAK_TREND_TP_MULT = float(os.getenv("WEAK_TREND_TP_MULT", "0.95"))
+STRONG_TREND_SL_MULT = float(os.getenv("STRONG_TREND_SL_MULT", "0.96"))
+STRONG_TREND_TP_MULT = float(os.getenv("STRONG_TREND_TP_MULT", "1.05"))
 
 NEWS_CACHE = {
     "latest": [],
@@ -85,6 +136,42 @@ SNAPSHOT_STATE = {
     "last_adaptive_trade_threshold": None,
     "last_adaptive_no_trade_threshold": None,
     "last_gemini_evaluation": None,
+    "last_outcome_penalty": None,
+    "last_outcome_penalty_reason": None,
+    "last_same_side_losses": None,
+    "last_journal_reason_penalty": None,
+    "last_journal_reason_penalty_reason": None,
+    "last_journal_reason_loss_rate": None,
+    "last_journal_reason_trade_count": None,
+    "last_session_bucket": None,
+    "last_session_penalty": None,
+    "last_session_penalty_reason": None,
+    "last_session_loss_rate": None,
+    "last_session_trade_count": None,
+    "last_exit_reason_penalty": None,
+    "last_exit_reason_penalty_reason": None,
+    "last_exit_reason_loss_rate": None,
+    "last_exit_reason_trade_count": None,
+    "last_auto_hardening_threshold_bonus": None,
+    "last_auto_hardening_reason": None,
+    "last_auto_hardening_triggered": None,
+    "reason_outcome_scores": {},
+    "last_pattern_lockout_penalty": None,
+    "last_pattern_lockout_reason": None,
+    "last_pattern_lockout_count": None,
+    "last_pattern_lockout_key": None,
+    "recent_loss_patterns": [],
+    "last_trend_regime_reason": None,
+    "last_trend_regime_score": None,
+    "last_trend_regime_alignment": None,
+    "last_trend_regime_opposing_count": None,
+    "last_trend_regime_strong_aligned": None,
+    "last_trend_regime_close_position": None,
+    "last_sl_distance": None,
+    "last_tp1_distance": None,
+    "last_tp2_distance": None,
+    "last_rr_tp1": None,
+    "last_rr_tp2": None,
     "last_no_trade_at": None,
     "last_no_trade_reason": None,
     "last_no_trade_symbol": None,
@@ -93,9 +180,22 @@ SNAPSHOT_STATE = {
     "last_execution_signal_id": None,
     "last_execution_type": None,
     "last_execution_ticket": None,
+    "last_exit_reason": None,
+    "last_trailing_initial_risk_price": None,
+    "last_trailing_initial_stop_loss": None,
+    "last_trailing_initial_tp1": None,
+    "last_trailing_last_applied_stop_loss": None,
+    "last_break_even_activated": None,
+    "last_trailing_activated": None,
+    "last_market_toxicity_score": None,
+    "last_market_toxicity_penalty": None,
+    "last_market_toxicity_reason": None,
     "last_trade_outcome": None,
     "last_loss_side": None,
     "last_loss_at": None,
+    "slippage_cooldown_until": None,
+    "recent_slippage_events": [],
+    "session_cooldowns": {},
     "consecutive_losses": {"BUY": 0, "SELL": 0},
     "queue_size": 0,
     "last_error": None,
@@ -372,8 +472,17 @@ def _parse_iso_utc(value: Optional[str]):
         return None
 
 
-def _check_signal_conflict(current_signal: Optional[dict], normalized_symbol: str, decision: str):
+def _check_signal_conflict(current_signal: Optional[dict], normalized_symbol: str, decision: str, session_bucket: Optional[str] = None):
     now = datetime.now(timezone.utc)
+    if SESSION_BUCKET_COOLDOWN_ENABLED and session_bucket:
+        cooldown_map = SNAPSHOT_STATE.get("session_cooldowns") if isinstance(SNAPSHOT_STATE.get("session_cooldowns"), dict) else {}
+        session_until = _parse_iso_utc(cooldown_map.get(session_bucket))
+        if session_until is not None and now < session_until:
+            return f"session_bucket_cooldown_active:{session_bucket}"
+    if SLIPPAGE_COOLDOWN_ENABLED:
+        cooldown_until = _parse_iso_utc(SNAPSHOT_STATE.get("slippage_cooldown_until"))
+        if cooldown_until is not None and now < cooldown_until:
+            return "slippage_cooldown_active"
     loss_side = SNAPSHOT_STATE.get("last_loss_side")
     last_loss_at = _parse_iso_utc(SNAPSHOT_STATE.get("last_loss_at"))
     consecutive_losses = SNAPSHOT_STATE.get("consecutive_losses", {}).get(decision, 0)
@@ -405,26 +514,89 @@ def _check_signal_conflict(current_signal: Optional[dict], normalized_symbol: st
     return None
 
 
-def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, confidence: float, reason: str, snapshot: Optional[dict] = None):
+def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, confidence: float, reason: str, snapshot: Optional[dict] = None, decision_meta: Optional[dict] = None):
     candle_range = _snapshot_range(snapshot or {})
+    decision_meta = decision_meta or {}
+    trend_regime_score = float(decision_meta.get("trend_regime_score") or 0.0)
+    session_bucket = str(decision_meta.get("session_bucket") or "UNKNOWN").upper()
+    conservative_factor = 1.0
+    if trend_regime_score and trend_regime_score < 0.7:
+        conservative_factor = 1.12
+    elif trend_regime_score and trend_regime_score > 0.82:
+        conservative_factor = 0.94
+
+    session_zone_mult = 1.0
+    if ADAPTIVE_ENTRY_ZONE_ENABLED:
+        if session_bucket == "ASIA":
+            session_zone_mult = ASIA_ENTRY_ZONE_MULT
+        elif session_bucket == "LONDON":
+            session_zone_mult = LONDON_ENTRY_ZONE_MULT
+        elif session_bucket == "NY":
+            session_zone_mult = NY_ENTRY_ZONE_MULT
+
+    geometry_sl_mult = 1.0
+    geometry_tp_mult = 1.0
+    if ADAPTIVE_GEOMETRY_ENABLED:
+        if session_bucket == "ASIA":
+            geometry_sl_mult = ASIA_SL_MULT
+            geometry_tp_mult = ASIA_TP_MULT
+        elif session_bucket == "LONDON":
+            geometry_sl_mult = LONDON_SL_MULT
+            geometry_tp_mult = LONDON_TP_MULT
+        elif session_bucket == "NY":
+            geometry_sl_mult = NY_SL_MULT
+            geometry_tp_mult = NY_TP_MULT
+
+    trend_geometry_sl_mult = 1.0
+    trend_geometry_tp_mult = 1.0
+    if TREND_GEOMETRY_ADAPTIVE_ENABLED:
+        if trend_regime_score and trend_regime_score < 0.7:
+            trend_geometry_sl_mult = WEAK_TREND_SL_MULT
+            trend_geometry_tp_mult = WEAK_TREND_TP_MULT
+        elif trend_regime_score and trend_regime_score > 0.82:
+            trend_geometry_sl_mult = STRONG_TREND_SL_MULT
+            trend_geometry_tp_mult = STRONG_TREND_TP_MULT
+    geometry_sl_mult *= trend_geometry_sl_mult
+    geometry_tp_mult *= trend_geometry_tp_mult
+
     if symbol == "XAUUSD":
-        zone = _clamp(candle_range * XAU_ENTRY_ZONE_RANGE_MULT, XAU_ENTRY_ZONE_MIN, XAU_ENTRY_ZONE_MAX)
-        sl_offset = max(5.0, zone * 4.0)
-        tp1_offset = max(8.0, zone * 6.0)
-        tp2_offset = max(12.0, zone * 9.0)
+        zone = _clamp(candle_range * XAU_ENTRY_ZONE_RANGE_MULT * session_zone_mult, XAU_ENTRY_ZONE_MIN, XAU_ENTRY_ZONE_MAX)
+        sl_offset = _clamp(max(XAU_SL_MIN, candle_range * XAU_SL_RANGE_MULT), XAU_SL_MIN, XAU_SL_MAX) * conservative_factor * geometry_sl_mult
+        tp1_offset = max(XAU_TP1_MIN, candle_range * XAU_TP1_RANGE_MULT) * geometry_tp_mult
+        tp2_offset = max(XAU_TP2_MIN, candle_range * XAU_TP2_RANGE_MULT) * geometry_tp_mult
         digits = 2
         spread_max_points = 120
     else:
-        zone = _clamp(candle_range * FOREX_ENTRY_ZONE_RANGE_MULT, FOREX_ENTRY_ZONE_MIN, FOREX_ENTRY_ZONE_MAX)
-        sl_offset = max(0.0030, zone * 4.0)
-        tp1_offset = max(0.0050, zone * 6.0)
-        tp2_offset = max(0.0080, zone * 9.0)
+        zone = _clamp(candle_range * FOREX_ENTRY_ZONE_RANGE_MULT * session_zone_mult, FOREX_ENTRY_ZONE_MIN, FOREX_ENTRY_ZONE_MAX)
+        sl_offset = _clamp(max(FOREX_SL_MIN, candle_range * FOREX_SL_RANGE_MULT), FOREX_SL_MIN, FOREX_SL_MAX) * conservative_factor * geometry_sl_mult
+        tp1_offset = max(FOREX_TP1_MIN, candle_range * FOREX_TP1_RANGE_MULT) * geometry_tp_mult
+        tp2_offset = max(FOREX_TP2_MIN, candle_range * FOREX_TP2_RANGE_MULT) * geometry_tp_mult
         digits = 5
         spread_max_points = 35
+
+    min_tp1_rr = 1.35
+    min_tp2_rr = 1.9
+    tp1_offset = max(tp1_offset, sl_offset * min_tp1_rr)
+    tp2_offset = max(tp2_offset, sl_offset * min_tp2_rr)
 
     sl = entry - sl_offset if decision == "BUY" else entry + sl_offset
     tp1 = entry + tp1_offset if decision == "BUY" else entry - tp1_offset
     tp2 = entry + tp2_offset if decision == "BUY" else entry - tp2_offset
+    rr_tp1 = tp1_offset / sl_offset if sl_offset > 0 else None
+    rr_tp2 = tp2_offset / sl_offset if sl_offset > 0 else None
+
+    trailing_start_r_mult = TRAILING_START_R_MULT
+    trailing_step_r_mult = TRAILING_STEP_R_MULT
+    if ADAPTIVE_TRAILING_ENABLED:
+        if session_bucket == "ASIA":
+            trailing_start_r_mult = ASIA_TRAILING_START_R_MULT
+            trailing_step_r_mult = ASIA_TRAILING_STEP_R_MULT
+        elif session_bucket == "LONDON":
+            trailing_start_r_mult = LONDON_TRAILING_START_R_MULT
+            trailing_step_r_mult = LONDON_TRAILING_STEP_R_MULT
+        elif session_bucket == "NY":
+            trailing_start_r_mult = NY_TRAILING_START_R_MULT
+            trailing_step_r_mult = NY_TRAILING_STEP_R_MULT
 
     return {
         "signal_id": f"local-ai-{symbol.lower()}-{int(datetime.now(timezone.utc).timestamp())}",
@@ -446,8 +618,38 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
             "session": "LOCAL_AI_QUEUE",
             "news_block_minutes": DEFAULT_NEWS_BLOCK_MINUTES,
             "entry_zone_size": round(zone, digits),
+            "entry_zone_session_mult": round(session_zone_mult, 4),
+            "geometry_sl_session_mult": round(geometry_sl_mult, 4),
+            "geometry_tp_session_mult": round(geometry_tp_mult, 4),
+            "geometry_trend_sl_mult": round(trend_geometry_sl_mult, 4),
+            "geometry_trend_tp_mult": round(trend_geometry_tp_mult, 4),
             "snapshot_range": round(candle_range, digits),
+            "sl_distance": round(sl_offset, digits),
+            "tp1_distance": round(tp1_offset, digits),
+            "tp2_distance": round(tp2_offset, digits),
+            "rr_tp1": round(rr_tp1, 4) if rr_tp1 is not None else None,
+            "rr_tp2": round(rr_tp2, 4) if rr_tp2 is not None else None,
+            "trend_regime_score": decision_meta.get("trend_regime_score"),
+            "structure_reason": decision_meta.get("recent_structure"),
+            "trend_regime_reason": decision_meta.get("trend_regime_reason"),
+            "pattern_lockout_key": decision_meta.get("pattern_lockout_key"),
+            "quality_tier": decision_meta.get("quality_tier"),
+            "quality_tier_label": decision_meta.get("quality_tier_label"),
+            "quality_penalty_count": decision_meta.get("quality_penalty_count"),
+            "trailing": {
+                "enabled": TRAILING_ENABLED,
+                "adaptive_enabled": ADAPTIVE_TRAILING_ENABLED,
+                "session_bucket": session_bucket,
+                "break_even_r_mult": BREAK_EVEN_R_MULT,
+                "break_even_buffer_r_mult": BREAK_EVEN_BUFFER_R_MULT,
+                "trailing_start_r_mult": trailing_start_r_mult,
+                "trailing_step_r_mult": trailing_step_r_mult,
+                "trailing_sl_r_mult": TRAILING_SL_R_MULT,
+            },
         },
+        "structure_reason": decision_meta.get("recent_structure"),
+        "trend_regime_reason": decision_meta.get("trend_regime_reason"),
+        "pattern_lockout_key": decision_meta.get("pattern_lockout_key"),
         "received_at": datetime.now(timezone.utc).isoformat(),
         "status": "READY",
         "source": "local_gemini_queue",
@@ -612,6 +814,9 @@ async def update_news_loop():
 
 
 async def refresh_ai4trade_signal_once():
+    if LOCAL_ONLY_MODE:
+        AI4TRADE_STATE["last_error"] = "disabled_local_only_mode"
+        return
     if not AI4TRADE_TOKEN:
         return
     headers = {"Authorization": f"Bearer {AI4TRADE_TOKEN}"}
@@ -635,6 +840,8 @@ async def refresh_ai4trade_signal_once():
 
 
 async def update_ai4trade_loop():
+    if LOCAL_ONLY_MODE:
+        return
     while True:
         await refresh_ai4trade_signal_once()
         _run_startup_checks()
@@ -657,7 +864,42 @@ async def snapshot_worker_loop():
                 SNAPSHOT_STATE["last_adaptive_trade_threshold"] = result.get("adaptive_trade_threshold")
                 SNAPSHOT_STATE["last_adaptive_no_trade_threshold"] = result.get("adaptive_no_trade_threshold")
                 SNAPSHOT_STATE["last_gemini_evaluation"] = result.get("evaluation")
+                SNAPSHOT_STATE["last_outcome_penalty"] = result.get("outcome_penalty")
+                SNAPSHOT_STATE["last_outcome_penalty_reason"] = result.get("outcome_penalty_reason")
+                SNAPSHOT_STATE["last_same_side_losses"] = result.get("same_side_losses")
+                SNAPSHOT_STATE["last_market_toxicity_score"] = result.get("market_toxicity_score")
+                SNAPSHOT_STATE["last_market_toxicity_penalty"] = result.get("market_toxicity_penalty")
+                SNAPSHOT_STATE["last_market_toxicity_reason"] = result.get("market_toxicity_reason")
+                SNAPSHOT_STATE["last_journal_reason_penalty"] = result.get("journal_reason_penalty")
+                SNAPSHOT_STATE["last_journal_reason_penalty_reason"] = result.get("journal_reason_penalty_reason")
+                SNAPSHOT_STATE["last_journal_reason_loss_rate"] = result.get("journal_reason_loss_rate")
+                SNAPSHOT_STATE["last_journal_reason_trade_count"] = result.get("journal_reason_trade_count")
+                SNAPSHOT_STATE["last_session_bucket"] = result.get("session_bucket")
+                SNAPSHOT_STATE["last_session_penalty"] = result.get("session_penalty")
+                SNAPSHOT_STATE["last_session_penalty_reason"] = result.get("session_penalty_reason")
+                SNAPSHOT_STATE["last_session_loss_rate"] = result.get("session_loss_rate")
+                SNAPSHOT_STATE["last_session_trade_count"] = result.get("session_trade_count")
+                SNAPSHOT_STATE["last_exit_reason_penalty"] = result.get("exit_reason_penalty")
+                SNAPSHOT_STATE["last_exit_reason_penalty_reason"] = result.get("exit_reason_penalty_reason")
+                SNAPSHOT_STATE["last_exit_reason_loss_rate"] = result.get("exit_reason_loss_rate")
+                SNAPSHOT_STATE["last_exit_reason_trade_count"] = result.get("exit_reason_trade_count")
+                SNAPSHOT_STATE["last_auto_hardening_threshold_bonus"] = result.get("auto_hardening_threshold_bonus")
+                SNAPSHOT_STATE["last_auto_hardening_reason"] = result.get("auto_hardening_reason")
+                SNAPSHOT_STATE["last_auto_hardening_triggered"] = result.get("auto_hardening_triggered")
+                SNAPSHOT_STATE["last_pattern_lockout_penalty"] = result.get("pattern_lockout_penalty")
+                SNAPSHOT_STATE["last_pattern_lockout_reason"] = result.get("pattern_lockout_reason")
+                SNAPSHOT_STATE["last_pattern_lockout_count"] = result.get("pattern_lockout_count")
+                SNAPSHOT_STATE["last_pattern_lockout_key"] = result.get("pattern_lockout_key")
+                SNAPSHOT_STATE["last_trend_regime_reason"] = result.get("trend_regime_reason")
+                SNAPSHOT_STATE["last_trend_regime_score"] = result.get("trend_regime_score")
+                SNAPSHOT_STATE["last_trend_regime_alignment"] = result.get("trend_regime_alignment")
+                SNAPSHOT_STATE["last_trend_regime_opposing_count"] = result.get("trend_regime_opposing_count")
+                SNAPSHOT_STATE["last_trend_regime_strong_aligned"] = result.get("trend_regime_strong_aligned")
+                SNAPSHOT_STATE["last_trend_regime_close_position"] = result.get("trend_regime_close_position")
                 SNAPSHOT_STATE["last_snapshot_timeframe"] = snap.get("timeframe")
+                SNAPSHOT_STATE["last_quality_tier"] = result.get("quality_tier")
+                SNAPSHOT_STATE["last_quality_tier_label"] = result.get("quality_tier_label")
+                SNAPSHOT_STATE["last_quality_penalty_count"] = result.get("quality_penalty_count")
                 if result.get("decision") not in {"BUY", "SELL"}:
                     SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
                     SNAPSHOT_STATE["last_no_trade_reason"] = result.get("reason")
@@ -676,6 +918,22 @@ async def snapshot_worker_loop():
                         "adaptive_trade_threshold": result.get("adaptive_trade_threshold"),
                         "adaptive_no_trade_threshold": result.get("adaptive_no_trade_threshold"),
                         "evaluation": result.get("evaluation"),
+                        "outcome_penalty": result.get("outcome_penalty"),
+                        "outcome_penalty_reason": result.get("outcome_penalty_reason"),
+                        "same_side_losses": result.get("same_side_losses"),
+                        "pattern_lockout_penalty": result.get("pattern_lockout_penalty"),
+                        "pattern_lockout_reason": result.get("pattern_lockout_reason"),
+                        "pattern_lockout_count": result.get("pattern_lockout_count"),
+                        "pattern_lockout_key": result.get("pattern_lockout_key"),
+                        "trend_regime_reason": result.get("trend_regime_reason"),
+                        "trend_regime_score": result.get("trend_regime_score"),
+                        "trend_regime_alignment": result.get("trend_regime_alignment"),
+                        "trend_regime_opposing_count": result.get("trend_regime_opposing_count"),
+                        "trend_regime_strong_aligned": result.get("trend_regime_strong_aligned"),
+                        "trend_regime_close_position": result.get("trend_regime_close_position"),
+                        "quality_tier": result.get("quality_tier"),
+                        "quality_tier_label": result.get("quality_tier_label"),
+                        "quality_penalty_count": result.get("quality_penalty_count"),
                     })
                     continue
                 normalized_symbol = result.get("symbol", snap["symbol"])
@@ -683,7 +941,7 @@ async def snapshot_worker_loop():
                 if state.get("last_keys", {}).get(normalized_symbol) == key:
                     continue
                 current_signal = _load_current_signal()
-                reject_reason = _check_signal_conflict(current_signal, normalized_symbol, result.get("decision"))
+                reject_reason = _check_signal_conflict(current_signal, normalized_symbol, result.get("decision"), result.get("session_bucket"))
                 if reject_reason:
                     SNAPSHOT_STATE["last_no_trade_at"] = datetime.now(timezone.utc).isoformat()
                     SNAPSHOT_STATE["last_no_trade_reason"] = reject_reason
@@ -699,7 +957,12 @@ async def snapshot_worker_loop():
                     })
                     _save_runtime_state()
                     continue
-                signal = _build_signal(normalized_symbol, result["decision"], result["entry"], result["timeframe"], result["confidence"], result["reason"], snap)
+                signal = _build_signal(normalized_symbol, result["decision"], result["entry"], result["timeframe"], result["confidence"], result["reason"], snap, result)
+                SNAPSHOT_STATE["last_sl_distance"] = signal.get("market_context", {}).get("sl_distance")
+                SNAPSHOT_STATE["last_tp1_distance"] = signal.get("market_context", {}).get("tp1_distance")
+                SNAPSHOT_STATE["last_tp2_distance"] = signal.get("market_context", {}).get("tp2_distance")
+                SNAPSHOT_STATE["last_rr_tp1"] = signal.get("market_context", {}).get("rr_tp1")
+                SNAPSHOT_STATE["last_rr_tp2"] = signal.get("market_context", {}).get("rr_tp2")
                 _store_generated_signal(signal)
                 _store_signal_payload(signal)
                 state.setdefault("last_keys", {})[normalized_symbol] = key
@@ -721,6 +984,46 @@ async def snapshot_worker_loop():
                     "adaptive_trade_threshold": result.get("adaptive_trade_threshold"),
                     "adaptive_no_trade_threshold": result.get("adaptive_no_trade_threshold"),
                     "evaluation": result.get("evaluation"),
+                    "outcome_penalty": result.get("outcome_penalty"),
+                    "outcome_penalty_reason": result.get("outcome_penalty_reason"),
+                    "same_side_losses": result.get("same_side_losses"),
+                    "market_toxicity_score": result.get("market_toxicity_score"),
+                    "market_toxicity_penalty": result.get("market_toxicity_penalty"),
+                    "market_toxicity_reason": result.get("market_toxicity_reason"),
+                    "journal_reason_penalty": result.get("journal_reason_penalty"),
+                    "journal_reason_penalty_reason": result.get("journal_reason_penalty_reason"),
+                    "journal_reason_loss_rate": result.get("journal_reason_loss_rate"),
+                    "journal_reason_trade_count": result.get("journal_reason_trade_count"),
+                    "session_bucket": result.get("session_bucket"),
+                    "session_penalty": result.get("session_penalty"),
+                    "session_penalty_reason": result.get("session_penalty_reason"),
+                    "session_loss_rate": result.get("session_loss_rate"),
+                    "session_trade_count": result.get("session_trade_count"),
+                    "exit_reason_penalty": result.get("exit_reason_penalty"),
+                    "exit_reason_penalty_reason": result.get("exit_reason_penalty_reason"),
+                    "exit_reason_loss_rate": result.get("exit_reason_loss_rate"),
+                    "exit_reason_trade_count": result.get("exit_reason_trade_count"),
+                    "auto_hardening_threshold_bonus": result.get("auto_hardening_threshold_bonus"),
+                    "auto_hardening_reason": result.get("auto_hardening_reason"),
+                    "auto_hardening_triggered": result.get("auto_hardening_triggered"),
+                    "pattern_lockout_penalty": result.get("pattern_lockout_penalty"),
+                    "pattern_lockout_reason": result.get("pattern_lockout_reason"),
+                    "pattern_lockout_count": result.get("pattern_lockout_count"),
+                    "pattern_lockout_key": result.get("pattern_lockout_key"),
+                    "trend_regime_reason": result.get("trend_regime_reason"),
+                    "trend_regime_score": result.get("trend_regime_score"),
+                    "trend_regime_alignment": result.get("trend_regime_alignment"),
+                    "trend_regime_opposing_count": result.get("trend_regime_opposing_count"),
+                    "trend_regime_strong_aligned": result.get("trend_regime_strong_aligned"),
+                    "trend_regime_close_position": result.get("trend_regime_close_position"),
+                    "quality_tier": result.get("quality_tier"),
+                    "quality_tier_label": result.get("quality_tier_label"),
+                    "quality_penalty_count": result.get("quality_penalty_count"),
+                    "sl_distance": signal.get("market_context", {}).get("sl_distance"),
+                    "tp1_distance": signal.get("market_context", {}).get("tp1_distance"),
+                    "tp2_distance": signal.get("market_context", {}).get("tp2_distance"),
+                    "rr_tp1": signal.get("market_context", {}).get("rr_tp1"),
+                    "rr_tp2": signal.get("market_context", {}).get("rr_tp2"),
                 })
                 if AI_SIGNAL_PUBLISH_ENABLED:
                     await _publish_signal_to_ai4trade(signal)
@@ -804,10 +1107,54 @@ def _effective_risk_config():
         "forex_max_spread_points": int(os.getenv("FOREX_MAX_SPREAD_POINTS", "35")),
         "gemini_min_confidence": float(os.getenv("GEMINI_MIN_CONFIDENCE", "0.55")),
         "gemini_override_confidence": float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.72")),
+        "xau_sl_min": XAU_SL_MIN,
+        "xau_sl_max": XAU_SL_MAX,
+        "xau_sl_range_mult": XAU_SL_RANGE_MULT,
+        "xau_tp1_min": XAU_TP1_MIN,
+        "xau_tp1_range_mult": XAU_TP1_RANGE_MULT,
+        "xau_tp2_min": XAU_TP2_MIN,
+        "xau_tp2_range_mult": XAU_TP2_RANGE_MULT,
         "session_filter_enabled": os.getenv("SESSION_FILTER_ENABLED", "true").lower() in {"1", "true", "yes", "on"},
         "session_start_hour_utc": int(os.getenv("SESSION_START_HOUR_UTC", "6")),
         "session_end_hour_utc": int(os.getenv("SESSION_END_HOUR_UTC", "21")),
         "default_news_block_minutes": DEFAULT_NEWS_BLOCK_MINUTES,
+        "trailing_enabled": TRAILING_ENABLED,
+        "slippage_cooldown_enabled": SLIPPAGE_COOLDOWN_ENABLED,
+        "slippage_cooldown_window_sec": SLIPPAGE_COOLDOWN_WINDOW_SEC,
+        "slippage_cooldown_threshold": SLIPPAGE_COOLDOWN_THRESHOLD,
+        "slippage_cooldown_sec": SLIPPAGE_COOLDOWN_SEC,
+        "session_bucket_cooldown_enabled": SESSION_BUCKET_COOLDOWN_ENABLED,
+        "session_bucket_cooldown_threshold": SESSION_BUCKET_COOLDOWN_THRESHOLD,
+        "session_bucket_cooldown_sec": SESSION_BUCKET_COOLDOWN_SEC,
+        "local_only_mode": LOCAL_ONLY_MODE,
+        "break_even_r_mult": BREAK_EVEN_R_MULT,
+        "break_even_buffer_r_mult": BREAK_EVEN_BUFFER_R_MULT,
+        "trailing_start_r_mult": TRAILING_START_R_MULT,
+        "trailing_step_r_mult": TRAILING_STEP_R_MULT,
+        "trailing_sl_r_mult": TRAILING_SL_R_MULT,
+        "adaptive_trailing_enabled": ADAPTIVE_TRAILING_ENABLED,
+        "asia_trailing_start_r_mult": ASIA_TRAILING_START_R_MULT,
+        "asia_trailing_step_r_mult": ASIA_TRAILING_STEP_R_MULT,
+        "london_trailing_start_r_mult": LONDON_TRAILING_START_R_MULT,
+        "london_trailing_step_r_mult": LONDON_TRAILING_STEP_R_MULT,
+        "ny_trailing_start_r_mult": NY_TRAILING_START_R_MULT,
+        "ny_trailing_step_r_mult": NY_TRAILING_STEP_R_MULT,
+        "adaptive_entry_zone_enabled": ADAPTIVE_ENTRY_ZONE_ENABLED,
+        "asia_entry_zone_mult": ASIA_ENTRY_ZONE_MULT,
+        "london_entry_zone_mult": LONDON_ENTRY_ZONE_MULT,
+        "ny_entry_zone_mult": NY_ENTRY_ZONE_MULT,
+        "adaptive_geometry_enabled": ADAPTIVE_GEOMETRY_ENABLED,
+        "asia_sl_mult": ASIA_SL_MULT,
+        "asia_tp_mult": ASIA_TP_MULT,
+        "london_sl_mult": LONDON_SL_MULT,
+        "london_tp_mult": LONDON_TP_MULT,
+        "ny_sl_mult": NY_SL_MULT,
+        "ny_tp_mult": NY_TP_MULT,
+        "trend_geometry_adaptive_enabled": TREND_GEOMETRY_ADAPTIVE_ENABLED,
+        "weak_trend_sl_mult": WEAK_TREND_SL_MULT,
+        "weak_trend_tp_mult": WEAK_TREND_TP_MULT,
+        "strong_trend_sl_mult": STRONG_TREND_SL_MULT,
+        "strong_trend_tp_mult": STRONG_TREND_TP_MULT,
     }
 
 
@@ -835,11 +1182,47 @@ def _risk_state_summary():
         "last_trade_outcome": SNAPSHOT_STATE.get("last_trade_outcome"),
         "last_loss_side": SNAPSHOT_STATE.get("last_loss_side"),
         "last_loss_at": SNAPSHOT_STATE.get("last_loss_at"),
+        "slippage_cooldown_until": SNAPSHOT_STATE.get("slippage_cooldown_until"),
+        "recent_slippage_events": SNAPSHOT_STATE.get("recent_slippage_events"),
+        "session_cooldowns": SNAPSHOT_STATE.get("session_cooldowns"),
         "consecutive_losses": SNAPSHOT_STATE.get("consecutive_losses"),
         "last_no_trade_reason": SNAPSHOT_STATE.get("last_no_trade_reason"),
         "last_execution_type": SNAPSHOT_STATE.get("last_execution_type"),
         "last_execution_signal_id": SNAPSHOT_STATE.get("last_execution_signal_id"),
         "last_execution_ticket": SNAPSHOT_STATE.get("last_execution_ticket"),
+        "last_exit_reason": SNAPSHOT_STATE.get("last_exit_reason"),
+        "last_trailing_initial_risk_price": SNAPSHOT_STATE.get("last_trailing_initial_risk_price"),
+        "last_trailing_initial_stop_loss": SNAPSHOT_STATE.get("last_trailing_initial_stop_loss"),
+        "last_trailing_initial_tp1": SNAPSHOT_STATE.get("last_trailing_initial_tp1"),
+        "last_trailing_last_applied_stop_loss": SNAPSHOT_STATE.get("last_trailing_last_applied_stop_loss"),
+        "last_break_even_activated": SNAPSHOT_STATE.get("last_break_even_activated"),
+        "last_trailing_activated": SNAPSHOT_STATE.get("last_trailing_activated"),
+        "last_market_toxicity_score": SNAPSHOT_STATE.get("last_market_toxicity_score"),
+        "last_market_toxicity_penalty": SNAPSHOT_STATE.get("last_market_toxicity_penalty"),
+        "last_market_toxicity_reason": SNAPSHOT_STATE.get("last_market_toxicity_reason"),
+        "last_outcome_penalty": SNAPSHOT_STATE.get("last_outcome_penalty"),
+        "last_outcome_penalty_reason": SNAPSHOT_STATE.get("last_outcome_penalty_reason"),
+        "last_same_side_losses": SNAPSHOT_STATE.get("last_same_side_losses"),
+        "last_journal_reason_penalty": SNAPSHOT_STATE.get("last_journal_reason_penalty"),
+        "last_journal_reason_penalty_reason": SNAPSHOT_STATE.get("last_journal_reason_penalty_reason"),
+        "last_journal_reason_loss_rate": SNAPSHOT_STATE.get("last_journal_reason_loss_rate"),
+        "last_journal_reason_trade_count": SNAPSHOT_STATE.get("last_journal_reason_trade_count"),
+        "last_session_bucket": SNAPSHOT_STATE.get("last_session_bucket"),
+        "last_session_penalty": SNAPSHOT_STATE.get("last_session_penalty"),
+        "last_session_penalty_reason": SNAPSHOT_STATE.get("last_session_penalty_reason"),
+        "last_session_loss_rate": SNAPSHOT_STATE.get("last_session_loss_rate"),
+        "last_session_trade_count": SNAPSHOT_STATE.get("last_session_trade_count"),
+        "last_exit_reason_penalty": SNAPSHOT_STATE.get("last_exit_reason_penalty"),
+        "last_exit_reason_penalty_reason": SNAPSHOT_STATE.get("last_exit_reason_penalty_reason"),
+        "last_exit_reason_loss_rate": SNAPSHOT_STATE.get("last_exit_reason_loss_rate"),
+        "last_exit_reason_trade_count": SNAPSHOT_STATE.get("last_exit_reason_trade_count"),
+        "last_auto_hardening_threshold_bonus": SNAPSHOT_STATE.get("last_auto_hardening_threshold_bonus"),
+        "last_auto_hardening_reason": SNAPSHOT_STATE.get("last_auto_hardening_reason"),
+        "last_auto_hardening_triggered": SNAPSHOT_STATE.get("last_auto_hardening_triggered"),
+        "last_pattern_lockout_penalty": SNAPSHOT_STATE.get("last_pattern_lockout_penalty"),
+        "last_pattern_lockout_reason": SNAPSHOT_STATE.get("last_pattern_lockout_reason"),
+        "last_pattern_lockout_count": SNAPSHOT_STATE.get("last_pattern_lockout_count"),
+        "last_pattern_lockout_key": SNAPSHOT_STATE.get("last_pattern_lockout_key"),
     }
 
 
@@ -862,7 +1245,53 @@ def _strategy_summary():
         "last_adaptive_trade_threshold": SNAPSHOT_STATE.get("last_adaptive_trade_threshold"),
         "last_adaptive_no_trade_threshold": SNAPSHOT_STATE.get("last_adaptive_no_trade_threshold"),
         "last_gemini_evaluation": SNAPSHOT_STATE.get("last_gemini_evaluation"),
+        "last_outcome_penalty": SNAPSHOT_STATE.get("last_outcome_penalty"),
+        "last_outcome_penalty_reason": SNAPSHOT_STATE.get("last_outcome_penalty_reason"),
+        "last_same_side_losses": SNAPSHOT_STATE.get("last_same_side_losses"),
+        "last_market_toxicity_score": SNAPSHOT_STATE.get("last_market_toxicity_score"),
+        "last_market_toxicity_penalty": SNAPSHOT_STATE.get("last_market_toxicity_penalty"),
+        "last_market_toxicity_reason": SNAPSHOT_STATE.get("last_market_toxicity_reason"),
+        "last_journal_reason_penalty": SNAPSHOT_STATE.get("last_journal_reason_penalty"),
+        "last_journal_reason_penalty_reason": SNAPSHOT_STATE.get("last_journal_reason_penalty_reason"),
+        "last_journal_reason_loss_rate": SNAPSHOT_STATE.get("last_journal_reason_loss_rate"),
+        "last_journal_reason_trade_count": SNAPSHOT_STATE.get("last_journal_reason_trade_count"),
+        "last_session_bucket": SNAPSHOT_STATE.get("last_session_bucket"),
+        "last_session_penalty": SNAPSHOT_STATE.get("last_session_penalty"),
+        "last_session_penalty_reason": SNAPSHOT_STATE.get("last_session_penalty_reason"),
+        "last_session_loss_rate": SNAPSHOT_STATE.get("last_session_loss_rate"),
+        "last_session_trade_count": SNAPSHOT_STATE.get("last_session_trade_count"),
+        "last_exit_reason_penalty": SNAPSHOT_STATE.get("last_exit_reason_penalty"),
+        "last_exit_reason_penalty_reason": SNAPSHOT_STATE.get("last_exit_reason_penalty_reason"),
+        "last_exit_reason_loss_rate": SNAPSHOT_STATE.get("last_exit_reason_loss_rate"),
+        "last_exit_reason_trade_count": SNAPSHOT_STATE.get("last_exit_reason_trade_count"),
+        "last_auto_hardening_threshold_bonus": SNAPSHOT_STATE.get("last_auto_hardening_threshold_bonus"),
+        "last_auto_hardening_reason": SNAPSHOT_STATE.get("last_auto_hardening_reason"),
+        "last_auto_hardening_triggered": SNAPSHOT_STATE.get("last_auto_hardening_triggered"),
+        "last_pattern_lockout_penalty": SNAPSHOT_STATE.get("last_pattern_lockout_penalty"),
+        "last_pattern_lockout_reason": SNAPSHOT_STATE.get("last_pattern_lockout_reason"),
+        "last_pattern_lockout_count": SNAPSHOT_STATE.get("last_pattern_lockout_count"),
+        "last_pattern_lockout_key": SNAPSHOT_STATE.get("last_pattern_lockout_key"),
+        "last_trend_regime_reason": SNAPSHOT_STATE.get("last_trend_regime_reason"),
+        "last_trend_regime_score": SNAPSHOT_STATE.get("last_trend_regime_score"),
+        "last_trend_regime_alignment": SNAPSHOT_STATE.get("last_trend_regime_alignment"),
+        "last_trend_regime_opposing_count": SNAPSHOT_STATE.get("last_trend_regime_opposing_count"),
+        "last_trend_regime_strong_aligned": SNAPSHOT_STATE.get("last_trend_regime_strong_aligned"),
+        "last_trend_regime_close_position": SNAPSHOT_STATE.get("last_trend_regime_close_position"),
+        "last_sl_distance": SNAPSHOT_STATE.get("last_sl_distance"),
+        "last_tp1_distance": SNAPSHOT_STATE.get("last_tp1_distance"),
+        "last_tp2_distance": SNAPSHOT_STATE.get("last_tp2_distance"),
+        "last_rr_tp1": SNAPSHOT_STATE.get("last_rr_tp1"),
+        "last_rr_tp2": SNAPSHOT_STATE.get("last_rr_tp2"),
         "last_snapshot_timeframe": SNAPSHOT_STATE.get("last_snapshot_timeframe"),
+        "last_trailing_initial_risk_price": SNAPSHOT_STATE.get("last_trailing_initial_risk_price"),
+        "last_trailing_initial_stop_loss": SNAPSHOT_STATE.get("last_trailing_initial_stop_loss"),
+        "last_trailing_initial_tp1": SNAPSHOT_STATE.get("last_trailing_initial_tp1"),
+        "last_trailing_last_applied_stop_loss": SNAPSHOT_STATE.get("last_trailing_last_applied_stop_loss"),
+        "last_break_even_activated": SNAPSHOT_STATE.get("last_break_even_activated"),
+        "last_trailing_activated": SNAPSHOT_STATE.get("last_trailing_activated"),
+        "last_quality_tier": SNAPSHOT_STATE.get("last_quality_tier"),
+        "last_quality_tier_label": SNAPSHOT_STATE.get("last_quality_tier_label"),
+        "last_quality_penalty_count": SNAPSHOT_STATE.get("last_quality_penalty_count"),
     }
 
 
@@ -904,24 +1333,212 @@ def _audit_summary(limit: int = 200):
     rejection_counts = {}
     recent_errors = []
     executions = []
+    decision_funnel = {
+        "snapshots_rejected": 0,
+        "signals_generated": 0,
+        "executions_opened": 0,
+        "executions_closed": 0,
+        "wins": 0,
+        "losses": 0,
+        "breakevens": 0,
+    }
+    gate_kill_breakdown = {
+        "session": 0,
+        "volatility": 0,
+        "structure": 0,
+        "trend": 0,
+        "execution": 0,
+        "outcome": 0,
+        "pattern": 0,
+        "toxicity": 0,
+        "quality": 0,
+        "conflict": 0,
+        "other": 0,
+    }
+    gate_session_matrix = {}
     generated_signals = []
+    reason_stats = {}
+    exit_reason_counts = {}
+    outcome_counts = {}
+    market_toxicity_histogram = {
+        "0.00-0.19": 0,
+        "0.20-0.39": 0,
+        "0.40-0.59": 0,
+        "0.60-0.79": 0,
+        "0.80-1.00": 0,
+    }
+    generated_by_signal_id = {}
     for item in events:
         event_type = str(item.get("type") or item.get("event_type") or "")
         if event_type == "snapshot_rejected":
             reason = str(item.get("reason") or "unknown")
             rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+            decision_funnel["snapshots_rejected"] += 1
+            if reason.startswith("outside_session:") or reason.startswith("session_hard_block:") or reason.startswith("session_bucket_cooldown_active:"):
+                gate_kill_breakdown["session"] += 1
+            elif reason.startswith("range_too_"):
+                gate_kill_breakdown["volatility"] += 1
+            elif "structure" in reason or reason.startswith("weak_last_candle:") or reason.startswith("weak_prev_candle:") or reason.startswith("bias_conflict:"):
+                gate_kill_breakdown["structure"] += 1
+            elif reason.startswith("trend_regime_"):
+                gate_kill_breakdown["trend"] += 1
+            elif reason.startswith("slippage_cooldown_active") or reason.startswith("poor_spread_quality:") or reason.startswith("spread_too_high:"):
+                gate_kill_breakdown["execution"] += 1
+            elif reason.startswith("outcome_revenge_block:") or reason.startswith("loss_cooldown_active") or reason.startswith("max_consecutive_losses_reached"):
+                gate_kill_breakdown["outcome"] += 1
+            elif reason.startswith("pattern_lockout:"):
+                gate_kill_breakdown["pattern"] += 1
+            elif reason.startswith("market_toxicity_block:"):
+                gate_kill_breakdown["toxicity"] += 1
+            elif reason.startswith("quality_tier_block:"):
+                gate_kill_breakdown["quality"] += 1
+            elif reason.startswith("position_open_") or reason.startswith("active_signal_") or reason.startswith("opposite_signal_blocked_") or reason.startswith("post_close_cooldown_active"):
+                gate_kill_breakdown["conflict"] += 1
+            else:
+                gate_kill_breakdown["other"] += 1
+            session_bucket = str(item.get("session_bucket") or "UNKNOWN")
+            matched_gate = "other"
+            for gate_name, gate_count in gate_kill_breakdown.items():
+                pass
+            if reason.startswith("outside_session:") or reason.startswith("session_hard_block:") or reason.startswith("session_bucket_cooldown_active:"):
+                matched_gate = "session"
+            elif reason.startswith("range_too_"):
+                matched_gate = "volatility"
+            elif "structure" in reason or reason.startswith("weak_last_candle:") or reason.startswith("weak_prev_candle:") or reason.startswith("bias_conflict:"):
+                matched_gate = "structure"
+            elif reason.startswith("trend_regime_"):
+                matched_gate = "trend"
+            elif reason.startswith("slippage_cooldown_active") or reason.startswith("poor_spread_quality:") or reason.startswith("spread_too_high:"):
+                matched_gate = "execution"
+            elif reason.startswith("outcome_revenge_block:") or reason.startswith("loss_cooldown_active") or reason.startswith("max_consecutive_losses_reached"):
+                matched_gate = "outcome"
+            elif reason.startswith("pattern_lockout:"):
+                matched_gate = "pattern"
+            elif reason.startswith("market_toxicity_block:"):
+                matched_gate = "toxicity"
+            elif reason.startswith("quality_tier_block:"):
+                matched_gate = "quality"
+            elif reason.startswith("position_open_") or reason.startswith("active_signal_") or reason.startswith("opposite_signal_blocked_") or reason.startswith("post_close_cooldown_active"):
+                matched_gate = "conflict"
+            gate_session_matrix[f"{matched_gate}|{session_bucket}"] = gate_session_matrix.get(f"{matched_gate}|{session_bucket}", 0) + 1
         if event_type == "signal_generated_from_snapshot":
             generated_signals.append(item)
+            decision_funnel["signals_generated"] += 1
+            try:
+                toxicity_score = float(item.get("market_toxicity_score") or 0.0)
+            except Exception:
+                toxicity_score = 0.0
+            if toxicity_score < 0.2:
+                market_toxicity_histogram["0.00-0.19"] += 1
+            elif toxicity_score < 0.4:
+                market_toxicity_histogram["0.20-0.39"] += 1
+            elif toxicity_score < 0.6:
+                market_toxicity_histogram["0.40-0.59"] += 1
+            elif toxicity_score < 0.8:
+                market_toxicity_histogram["0.60-0.79"] += 1
+            else:
+                market_toxicity_histogram["0.80-1.00"] += 1
+            signal_id = str(item.get("signal_id") or "")
+            if signal_id:
+                generated_by_signal_id[signal_id] = item
         if event_type == "execution_report":
             executions.append(item)
+            report_kind = str(item.get("type") or "").upper()
+            if report_kind == "OPEN":
+                decision_funnel["executions_opened"] += 1
+            elif report_kind in {"CLOSE", "CLOSED", "EXIT"}:
+                decision_funnel["executions_closed"] += 1
+            outcome = str(item.get("outcome") or item.get("result") or "").upper()
+            exit_reason = str(item.get("exit_reason") or "UNKNOWN_EXIT").upper()
+            if outcome:
+                outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+                if outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE"}:
+                    decision_funnel["wins"] += 1
+                elif outcome in {"LOSS", "SL", "STOP_LOSS", "NEGATIVE"}:
+                    decision_funnel["losses"] += 1
+                elif outcome in {"BREAKEVEN", "BE"}:
+                    decision_funnel["breakevens"] += 1
+            exit_reason_counts[exit_reason] = exit_reason_counts.get(exit_reason, 0) + 1
+            signal_id = str(item.get("signal_id") or "")
+            source = generated_by_signal_id.get(signal_id)
+            if source:
+                side = str(source.get("side") or "unknown")
+                structure_reason = str(source.get("structure_reason") or source.get("recent_structure") or source.get("pattern_structure_reason") or "unknown_structure")
+                trend_reason = str(source.get("trend_regime_reason") or source.get("pattern_trend_regime_reason") or "unknown_trend")
+                session_bucket = str(source.get("session_bucket") or "UNKNOWN")
+                quality_tier = str(source.get("quality_tier") or "UNKNOWN")
+                keys = [
+                    f"side:{side}",
+                    f"structure:{structure_reason}",
+                    f"trend:{trend_reason}",
+                    f"combo:{side}|{structure_reason}|{trend_reason}",
+                    f"session:{session_bucket}",
+                    f"session_side:{session_bucket}|{side}",
+                    f"quality_tier:{quality_tier}",
+                    f"session_quality:{session_bucket}|{quality_tier}",
+                    f"exit:{exit_reason}",
+                    f"session_exit:{session_bucket}|{exit_reason}",
+                ]
+                is_loss = outcome in {"LOSS", "SL", "STOP_LOSS", "NEGATIVE"}
+                is_win = outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE", "BREAKEVEN", "BE"}
+                if is_loss or is_win:
+                    for key in keys:
+                        bucket = reason_stats.setdefault(key, {"trades": 0, "losses": 0, "wins": 0})
+                        bucket["trades"] += 1
+                        if is_loss:
+                            bucket["losses"] += 1
+                        if is_win:
+                            bucket["wins"] += 1
         if item.get("level") == "error" or event_type in {"error", "snapshot_worker_error"}:
             recent_errors.append(item)
     top_rejections = [
         {"reason": reason, "count": count}
         for reason, count in sorted(rejection_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
     ]
+    top_reason_loss_rates = []
+    for key, stat in reason_stats.items():
+        trades = int(stat.get("trades", 0) or 0)
+        losses = int(stat.get("losses", 0) or 0)
+        wins = int(stat.get("wins", 0) or 0)
+        loss_rate = (losses / trades) if trades > 0 else 0.0
+        top_reason_loss_rates.append({"key": key, "trades": trades, "losses": losses, "wins": wins, "loss_rate": round(loss_rate, 4)})
+    top_reason_loss_rates = sorted(top_reason_loss_rates, key=lambda x: (x["loss_rate"], x["trades"]), reverse=True)[:15]
+    SNAPSHOT_STATE["reason_outcome_scores"] = reason_stats
+    top_exit_reasons = [
+        {"exit_reason": reason, "count": count}
+        for reason, count in sorted(exit_reason_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    ]
+    top_outcomes = [
+        {"outcome": outcome, "count": count}
+        for outcome, count in sorted(outcome_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    ]
+    top_block_reasons = [
+        {"reason": reason, "count": count}
+        for reason, count in sorted(
+            {k: v for k, v in rejection_counts.items() if str(k).startswith("session_hard_block:") or str(k).startswith("market_toxicity_block:") or str(k).startswith("quality_tier_block:")}.items(),
+            key=lambda kv: kv[1],
+            reverse=True,
+        )[:10]
+    ]
+    top_session_quality_loss_rates = [
+        {"key": item["key"], "trades": item["trades"], "losses": item["losses"], "wins": item["wins"], "loss_rate": item["loss_rate"]}
+        for item in top_reason_loss_rates
+        if str(item.get("key") or "").startswith("session:") or str(item.get("key") or "").startswith("quality_tier:") or str(item.get("key") or "").startswith("session_quality:")
+    ][:15]
     return {
+        "decision_funnel": decision_funnel,
+        "gate_kill_breakdown": gate_kill_breakdown,
+        "gate_session_matrix": [
+            {"key": key, "count": count}
+            for key, count in sorted(gate_session_matrix.items(), key=lambda kv: kv[1], reverse=True)[:20]
+        ],
         "top_rejection_reasons": top_rejections,
+        "top_reason_loss_rates": top_reason_loss_rates,
+        "top_exit_reasons": top_exit_reasons,
+        "top_outcomes": top_outcomes,
+        "top_block_reasons": top_block_reasons,
+        "top_session_quality_loss_rates": top_session_quality_loss_rates,
+        "market_toxicity_histogram": market_toxicity_histogram,
         "recent_executions": executions[:10],
         "recent_generated_signals": generated_signals[:10],
         "recent_errors": recent_errors[:10],
@@ -1075,6 +1692,16 @@ async def receive_snapshot(batch: SnapshotBatch, authorization: Optional[str] = 
         item = snap.model_dump()
         item["symbol"] = symbol
         item["raw_symbol"] = raw_symbol
+        item["runtime_state"] = {
+            "last_loss_side": SNAPSHOT_STATE.get("last_loss_side"),
+            "last_loss_at": SNAPSHOT_STATE.get("last_loss_at"),
+            "consecutive_losses": SNAPSHOT_STATE.get("consecutive_losses", {"BUY": 0, "SELL": 0}),
+            "last_trade_outcome": SNAPSHOT_STATE.get("last_trade_outcome"),
+            "recent_loss_patterns": SNAPSHOT_STATE.get("recent_loss_patterns", []),
+            "reason_outcome_scores": SNAPSHOT_STATE.get("reason_outcome_scores", {}),
+            "slippage_cooldown_until": SNAPSHOT_STATE.get("slippage_cooldown_until"),
+            "recent_slippage_events": SNAPSHOT_STATE.get("recent_slippage_events", []),
+        }
         filtered.append(item)
 
     payload = {
@@ -1213,6 +1840,26 @@ def publish_signal(signal: Signal, authorization: Optional[str] = Header(default
     return {"ok": True, "stored": True, "signal_id": signal.signal_id}
 
 
+def _build_bridge_contract(data: dict):
+    return {
+        "signal_id": data.get("signal_id"),
+        "symbol": data.get("symbol"),
+        "side": data.get("side"),
+        "timestamp_utc": data.get("timestamp_utc"),
+        "stop_loss": data.get("stop_loss"),
+        "entry_zone_min": ((data.get("entry_zone") or {}).get("min") if isinstance(data.get("entry_zone"), dict) else None),
+        "entry_zone_max": ((data.get("entry_zone") or {}).get("max") if isinstance(data.get("entry_zone"), dict) else None),
+        "tp1_price": (((data.get("take_profit") or [])[0] or {}).get("price") if isinstance(data.get("take_profit"), list) and len(data.get("take_profit")) > 0 and isinstance(data.get("take_profit")[0], dict) else None),
+        "max_signal_age_sec": data.get("max_signal_age_sec"),
+        "break_even_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("break_even_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
+        "break_even_buffer_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("break_even_buffer_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
+        "trailing_start_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_start_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
+        "trailing_step_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_step_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
+        "trailing_sl_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_sl_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
+        "trailing_enabled": bool((((data.get("market_context") or {}).get("trailing") or {}).get("enabled")) if isinstance((data.get("market_context") or {}).get("trailing"), dict) else False),
+    }
+
+
 @app.get("/signal/latest")
 def latest_signal(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
@@ -1227,7 +1874,32 @@ def latest_signal(authorization: Optional[str] = Header(default=None)):
     news_blocked = active_news is not None
     if news_blocked:
         data["status"] = "BLOCKED_BY_NEWS"
-    return {"ok": True, "signal": data, "news_blocked": news_blocked, "active_news": active_news, "news_updated_at": NEWS_CACHE.get("updated_at")}
+    bridge_contract = _build_bridge_contract(data)
+    return {"ok": True, "signal": data, "bridge_contract": bridge_contract, "news_blocked": news_blocked, "active_news": active_news, "news_updated_at": NEWS_CACHE.get("updated_at")}
+
+
+@app.get("/contract/status")
+def contract_status(authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    if not os.path.exists(SIGNAL_STORE):
+        return {"ok": True, "signal_present": False, "bridge_contract": None, "validation": {"valid": False, "missing": ["signal"]}}
+    with open(SIGNAL_STORE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    bridge_contract = _build_bridge_contract(data)
+    required_fields = [
+        "signal_id", "symbol", "side", "timestamp_utc", "stop_loss",
+        "entry_zone_min", "entry_zone_max", "tp1_price", "max_signal_age_sec"
+    ]
+    missing = [field for field in required_fields if bridge_contract.get(field) in (None, "")]
+    validation = {
+        "valid": len(missing) == 0,
+        "missing": missing,
+        "trailing_contract_present": any(bridge_contract.get(field) is not None for field in [
+            "break_even_r_mult", "break_even_buffer_r_mult", "trailing_start_r_mult", "trailing_step_r_mult", "trailing_sl_r_mult"
+        ]),
+        "trailing_enabled": bridge_contract.get("trailing_enabled"),
+    }
+    return {"ok": True, "signal_present": True, "bridge_contract": bridge_contract, "validation": validation}
 
 
 @app.post("/execution/report")
@@ -1243,6 +1915,20 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
     SNAPSHOT_STATE["last_execution_signal_id"] = payload.get("signal_id")
     SNAPSHOT_STATE["last_execution_type"] = report_kind
     SNAPSHOT_STATE["last_execution_ticket"] = payload.get("ticket")
+    if payload.get("exit_reason") is not None:
+        SNAPSHOT_STATE["last_exit_reason"] = payload.get("exit_reason")
+    if payload.get("initial_risk_price") is not None:
+        SNAPSHOT_STATE["last_trailing_initial_risk_price"] = payload.get("initial_risk_price")
+    if payload.get("initial_stop_loss") is not None:
+        SNAPSHOT_STATE["last_trailing_initial_stop_loss"] = payload.get("initial_stop_loss")
+    if payload.get("initial_tp1") is not None:
+        SNAPSHOT_STATE["last_trailing_initial_tp1"] = payload.get("initial_tp1")
+    if payload.get("last_applied_stop_loss") is not None:
+        SNAPSHOT_STATE["last_trailing_last_applied_stop_loss"] = payload.get("last_applied_stop_loss")
+    if payload.get("break_even_activated") is not None:
+        SNAPSHOT_STATE["last_break_even_activated"] = payload.get("break_even_activated")
+    if payload.get("trailing_activated") is not None:
+        SNAPSHOT_STATE["last_trailing_activated"] = payload.get("trailing_activated")
 
     current_signal = _load_current_signal()
     if current_signal and current_signal.get("signal_id") == payload.get("signal_id"):
@@ -1260,6 +1946,8 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
                 current_signal["outcome"] = outcome
             if pnl is not None:
                 current_signal["pnl"] = pnl
+            if payload.get("exit_reason") is not None:
+                current_signal["exit_reason"] = payload.get("exit_reason")
             side = current_signal.get("side")
             if outcome in {"LOSS", "SL", "STOP_LOSS", "NEGATIVE"}:
                 SNAPSHOT_STATE["last_trade_outcome"] = outcome
@@ -1267,6 +1955,48 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
                 SNAPSHOT_STATE["last_loss_at"] = event["at"]
                 losses = SNAPSHOT_STATE.setdefault("consecutive_losses", {"BUY": 0, "SELL": 0})
                 losses[side] = int(losses.get(side, 0)) + 1
+                market_context = current_signal.get("market_context") if isinstance(current_signal.get("market_context"), dict) else {}
+                pattern_key = "|".join([
+                    str(current_signal.get("side") or ""),
+                    str(current_signal.get("pattern_structure_reason") or current_signal.get("structure_reason") or market_context.get("structure_reason") or "unknown_structure"),
+                    str(current_signal.get("pattern_trend_regime_reason") or current_signal.get("trend_regime_reason") or market_context.get("trend_regime_reason") or "unknown_trend"),
+                ])
+                recent_patterns = SNAPSHOT_STATE.setdefault("recent_loss_patterns", [])
+                recent_patterns.append({
+                    "at": event["at"],
+                    "pattern_key": pattern_key,
+                    "signal_id": current_signal.get("signal_id"),
+                    "side": side,
+                    "outcome": outcome,
+                })
+                SNAPSHOT_STATE["recent_loss_patterns"] = recent_patterns[-50:]
+                session_bucket = str((current_signal.get("market_context") or {}).get("trailing", {}).get("session_bucket") or current_signal.get("session_bucket") or "UNKNOWN")
+                if SESSION_BUCKET_COOLDOWN_ENABLED:
+                    losses = SNAPSHOT_STATE.setdefault("consecutive_losses", {"BUY": 0, "SELL": 0})
+                    if int(losses.get(side, 0) or 0) >= SESSION_BUCKET_COOLDOWN_THRESHOLD:
+                        cooldowns = SNAPSHOT_STATE.setdefault("session_cooldowns", {})
+                        cooldowns[session_bucket] = (datetime.now(timezone.utc) + __import__("datetime").timedelta(seconds=SESSION_BUCKET_COOLDOWN_SEC)).isoformat()
+                        SNAPSHOT_STATE["session_cooldowns"] = cooldowns
+                exit_reason = str(payload.get("exit_reason") or "").upper()
+                if SLIPPAGE_COOLDOWN_ENABLED and exit_reason == "GAP_SLIPPAGE_SL":
+                    now_dt = datetime.now(timezone.utc)
+                    recent_slippage = SNAPSHOT_STATE.setdefault("recent_slippage_events", [])
+                    recent_slippage.append({
+                        "at": event["at"],
+                        "signal_id": current_signal.get("signal_id"),
+                        "side": side,
+                        "exit_reason": exit_reason,
+                    })
+                    kept = []
+                    for item in recent_slippage:
+                        at_dt = _parse_iso_utc(item.get("at"))
+                        if at_dt is None:
+                            continue
+                        if (now_dt - at_dt).total_seconds() <= SLIPPAGE_COOLDOWN_WINDOW_SEC:
+                            kept.append(item)
+                    SNAPSHOT_STATE["recent_slippage_events"] = kept[-20:]
+                    if len(kept) >= SLIPPAGE_COOLDOWN_THRESHOLD:
+                        SNAPSHOT_STATE["slippage_cooldown_until"] = (now_dt + __import__("datetime").timedelta(seconds=SLIPPAGE_COOLDOWN_SEC)).isoformat()
             elif outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE", "BREAKEVEN", "BE"}:
                 SNAPSHOT_STATE["last_trade_outcome"] = outcome
                 losses = SNAPSHOT_STATE.setdefault("consecutive_losses", {"BUY": 0, "SELL": 0})
@@ -1275,6 +2005,8 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
                 if outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE"}:
                     SNAPSHOT_STATE["last_loss_side"] = None
                     SNAPSHOT_STATE["last_loss_at"] = None
+            current_signal["pattern_structure_reason"] = current_signal.get("pattern_structure_reason") or current_signal.get("structure_reason") or current_signal.get("market_context", {}).get("structure_reason")
+            current_signal["pattern_trend_regime_reason"] = current_signal.get("pattern_trend_regime_reason") or current_signal.get("trend_regime_reason") or current_signal.get("market_context", {}).get("trend_regime_reason")
             _store_signal_payload(current_signal)
     _save_runtime_state()
     return {"ok": True}

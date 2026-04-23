@@ -25,14 +25,57 @@ XAU_MIN_CANDLE_RANGE = float(os.getenv("XAU_MIN_CANDLE_RANGE", "0.8"))
 XAU_MAX_CANDLE_RANGE = float(os.getenv("XAU_MAX_CANDLE_RANGE", "8.0"))
 FOREX_MIN_CANDLE_RANGE = float(os.getenv("FOREX_MIN_CANDLE_RANGE", "0.0005"))
 FOREX_MAX_CANDLE_RANGE = float(os.getenv("FOREX_MAX_CANDLE_RANGE", "0.0080"))
-LATE_ENTRY_RANGE_FACTOR = float(os.getenv("LATE_ENTRY_RANGE_FACTOR", "0.75"))
-EXHAUSTION_BODY_RATIO = float(os.getenv("EXHAUSTION_BODY_RATIO", "0.8"))
-DETERMINISTIC_SCORE_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_TRADE_THRESHOLD", "0.58"))
-DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD", "0.48"))
+LATE_ENTRY_RANGE_FACTOR = float(os.getenv("LATE_ENTRY_RANGE_FACTOR", "0.55"))
+EXHAUSTION_BODY_RATIO = float(os.getenv("EXHAUSTION_BODY_RATIO", "0.72"))
+NO_CHASE_CLOSE_EXTREME_RATIO = float(os.getenv("NO_CHASE_CLOSE_EXTREME_RATIO", "0.12"))
+MIN_STRUCTURE_BODY_RATIO = float(os.getenv("MIN_STRUCTURE_BODY_RATIO", "0.28"))
+STRONG_BODY_RATIO = float(os.getenv("STRONG_BODY_RATIO", "0.45"))
+TREND_REGIME_MIN_BODY_RATIO = float(os.getenv("TREND_REGIME_MIN_BODY_RATIO", "0.22"))
+TREND_REGIME_ALIGNMENT_MIN = int(os.getenv("TREND_REGIME_ALIGNMENT_MIN", "3"))
+TREND_REGIME_SCORE_MIN = float(os.getenv("TREND_REGIME_SCORE_MIN", "0.58"))
+TREND_REGIME_PULLBACK_TOLERANCE = float(os.getenv("TREND_REGIME_PULLBACK_TOLERANCE", "0.38"))
+DETERMINISTIC_SCORE_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_TRADE_THRESHOLD", "0.68"))
+DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD = float(os.getenv("DETERMINISTIC_SCORE_NO_TRADE_THRESHOLD", "0.56"))
 ADAPTIVE_THRESHOLD_ENABLED = os.getenv("ADAPTIVE_THRESHOLD_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
-ADAPTIVE_THRESHOLD_MAX_PENALTY = float(os.getenv("ADAPTIVE_THRESHOLD_MAX_PENALTY", "0.08"))
-ADAPTIVE_THRESHOLD_MAX_BONUS = float(os.getenv("ADAPTIVE_THRESHOLD_MAX_BONUS", "0.03"))
-GEMINI_OVERRIDE_CONFIDENCE = float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.72"))
+ADAPTIVE_THRESHOLD_MAX_PENALTY = float(os.getenv("ADAPTIVE_THRESHOLD_MAX_PENALTY", "0.12"))
+ADAPTIVE_THRESHOLD_MAX_BONUS = float(os.getenv("ADAPTIVE_THRESHOLD_MAX_BONUS", "0.02"))
+GEMINI_OVERRIDE_CONFIDENCE = float(os.getenv("GEMINI_OVERRIDE_CONFIDENCE", "0.80"))
+OUTCOME_PENALTY_ENABLED = os.getenv("OUTCOME_PENALTY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+OUTCOME_PENALTY_MAX = float(os.getenv("OUTCOME_PENALTY_MAX", "0.12"))
+OUTCOME_PENALTY_WINDOW_SEC = int(os.getenv("OUTCOME_PENALTY_WINDOW_SEC", "7200"))
+OUTCOME_PENALTY_RECENT_LOSS_WEIGHT = float(os.getenv("OUTCOME_PENALTY_RECENT_LOSS_WEIGHT", "0.05"))
+OUTCOME_PENALTY_CONSECUTIVE_LOSS_WEIGHT = float(os.getenv("OUTCOME_PENALTY_CONSECUTIVE_LOSS_WEIGHT", "0.03"))
+OUTCOME_PENALTY_REVENGE_BLOCK_THRESHOLD = int(os.getenv("OUTCOME_PENALTY_REVENGE_BLOCK_THRESHOLD", "2"))
+PATTERN_LOCKOUT_ENABLED = os.getenv("PATTERN_LOCKOUT_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+PATTERN_LOCKOUT_WINDOW_SEC = int(os.getenv("PATTERN_LOCKOUT_WINDOW_SEC", "10800"))
+PATTERN_LOCKOUT_THRESHOLD = int(os.getenv("PATTERN_LOCKOUT_THRESHOLD", "2"))
+PATTERN_LOCKOUT_PENALTY = float(os.getenv("PATTERN_LOCKOUT_PENALTY", "0.08"))
+JOURNAL_REASON_SCORE_ENABLED = os.getenv("JOURNAL_REASON_SCORE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+JOURNAL_REASON_SCORE_MAX_PENALTY = float(os.getenv("JOURNAL_REASON_SCORE_MAX_PENALTY", "0.10"))
+JOURNAL_REASON_SCORE_MIN_TRADES = int(os.getenv("JOURNAL_REASON_SCORE_MIN_TRADES", "3"))
+MULTI_PENALTY_CONFIDENCE_CAP_ENABLED = os.getenv("MULTI_PENALTY_CONFIDENCE_CAP_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+MULTI_PENALTY_CONFIDENCE_CAP_THRESHOLD = int(os.getenv("MULTI_PENALTY_CONFIDENCE_CAP_THRESHOLD", "2"))
+MULTI_PENALTY_CONFIDENCE_CAP_VALUE = float(os.getenv("MULTI_PENALTY_CONFIDENCE_CAP_VALUE", "0.58"))
+AUTO_HARDENING_ENABLED = os.getenv("AUTO_HARDENING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+AUTO_HARDENING_THRESHOLD = float(os.getenv("AUTO_HARDENING_THRESHOLD", "0.65"))
+AUTO_HARDENING_THRESHOLD_BONUS = float(os.getenv("AUTO_HARDENING_THRESHOLD_BONUS", "0.05"))
+SESSION_SCORING_ENABLED = os.getenv("SESSION_SCORING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+SESSION_SCORE_MAX_PENALTY = float(os.getenv("SESSION_SCORE_MAX_PENALTY", "0.08"))
+SESSION_SCORE_MIN_TRADES = int(os.getenv("SESSION_SCORE_MIN_TRADES", "3"))
+EXIT_REASON_PENALTY_ENABLED = os.getenv("EXIT_REASON_PENALTY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+EXIT_REASON_PENALTY_MAX = float(os.getenv("EXIT_REASON_PENALTY_MAX", "0.08"))
+EXIT_REASON_PENALTY_MIN_TRADES = int(os.getenv("EXIT_REASON_PENALTY_MIN_TRADES", "3"))
+EXIT_REASON_HARD_BLOCK_THRESHOLD = float(os.getenv("EXIT_REASON_HARD_BLOCK_THRESHOLD", "0.85"))
+MARKET_TOXICITY_ENABLED = os.getenv("MARKET_TOXICITY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+MARKET_TOXICITY_PENALTY_MAX = float(os.getenv("MARKET_TOXICITY_PENALTY_MAX", "0.08"))
+MARKET_TOXICITY_HARD_BLOCK_THRESHOLD = float(os.getenv("MARKET_TOXICITY_HARD_BLOCK_THRESHOLD", "0.85"))
+SESSION_HARD_BLOCK_ENABLED = os.getenv("SESSION_HARD_BLOCK_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+SESSION_HARD_BLOCK_MIN_TRADES = int(os.getenv("SESSION_HARD_BLOCK_MIN_TRADES", "4"))
+SESSION_HARD_BLOCK_LOSS_RATE = float(os.getenv("SESSION_HARD_BLOCK_LOSS_RATE", "0.80"))
+QUALITY_TIERING_ENABLED = os.getenv("QUALITY_TIERING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+QUALITY_TIER_A_MIN = float(os.getenv("QUALITY_TIER_A_MIN", "0.78"))
+QUALITY_TIER_B_MIN = float(os.getenv("QUALITY_TIER_B_MIN", "0.68"))
+QUALITY_TIER_C_BLOCK_ENABLED = os.getenv("QUALITY_TIER_C_BLOCK_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 GEMINI_RUNTIME_STATE = {
     "enabled": GEMINI_ENABLED,
     "model": GEMINI_MODEL,
@@ -121,21 +164,427 @@ def _recent_structure_gate(snapshot: dict):
     if len(candles) < 3:
         return {"pass": True, "reason": "recent_candles_insufficient"}
 
-    latest = candles[0]
-    latest_range = max(latest["high"] - latest["low"], 0.00001)
-    latest_body = abs(latest["close"] - latest["open"])
-    body_ratio = latest_body / latest_range
-    if body_ratio < 0.2:
-        return {"pass": False, "reason": f"weak_last_candle:{body_ratio:.2f}"}
+    latest, prev1, prev2 = candles[:3]
 
-    directions = [_candle_direction(c) for c in candles[:3]]
-    buy_count = len([d for d in directions if d == "BUY"])
-    sell_count = len([d for d in directions if d == "SELL"])
-    if buy_count >= 2:
-        return {"pass": True, "bias": "BUY", "reason": "recent_structure_buy"}
-    if sell_count >= 2:
-        return {"pass": True, "bias": "SELL", "reason": "recent_structure_sell"}
-    return {"pass": False, "reason": "mixed_recent_structure"}
+    def _body_ratio(candle: dict) -> float:
+        candle_range = max(candle["high"] - candle["low"], 0.00001)
+        return abs(candle["close"] - candle["open"]) / candle_range
+
+    latest_body_ratio = _body_ratio(latest)
+    prev1_body_ratio = _body_ratio(prev1)
+    prev2_body_ratio = _body_ratio(prev2)
+    if latest_body_ratio < MIN_STRUCTURE_BODY_RATIO:
+        return {"pass": False, "reason": f"weak_last_candle:{latest_body_ratio:.2f}"}
+    if prev1_body_ratio < 0.18:
+        return {"pass": False, "reason": f"weak_prev_candle:{prev1_body_ratio:.2f}"}
+
+    latest_dir = _candle_direction(latest)
+    prev1_dir = _candle_direction(prev1)
+    prev2_dir = _candle_direction(prev2)
+    if "FLAT" in {latest_dir, prev1_dir}:
+        return {"pass": False, "reason": "flat_structure_component"}
+    if latest_dir != prev1_dir:
+        return {"pass": False, "reason": f"latest_prev_misaligned:{latest_dir}_vs_{prev1_dir}"}
+
+    aligned_count = len([d for d in [latest_dir, prev1_dir, prev2_dir] if d == latest_dir])
+    if aligned_count < 2:
+        return {"pass": False, "reason": "insufficient_directional_alignment"}
+
+    if latest_body_ratio < STRONG_BODY_RATIO and prev1_body_ratio < STRONG_BODY_RATIO:
+        return {"pass": False, "reason": f"weak_structure_impulse:{latest_body_ratio:.2f},{prev1_body_ratio:.2f}"}
+
+    reason = "recent_structure_strong" if aligned_count == 3 else "recent_structure_supported"
+    return {
+        "pass": True,
+        "bias": latest_dir,
+        "reason": reason,
+        "aligned_count": aligned_count,
+        "latest_body_ratio": round(latest_body_ratio, 4),
+        "prev1_body_ratio": round(prev1_body_ratio, 4),
+        "prev2_body_ratio": round(prev2_body_ratio, 4),
+    }
+
+
+def _trend_regime_gate(snapshot: dict, bias: str):
+    candles = _extract_recent_candles(snapshot)
+    if len(candles) < 5:
+        return {"pass": True, "reason": "trend_regime_insufficient_candles", "score": None}
+
+    sample = candles[:5]
+    directions = [_candle_direction(c) for c in sample]
+
+    def _body_ratio(candle: dict) -> float:
+        candle_range = max(candle["high"] - candle["low"], 0.00001)
+        return abs(candle["close"] - candle["open"]) / candle_range
+
+    aligned_count = len([d for d in directions if d == bias])
+    opposing_count = len([d for d in directions if d not in {bias, "FLAT"}])
+    strong_aligned = len([c for c in sample if _candle_direction(c) == bias and _body_ratio(c) >= TREND_REGIME_MIN_BODY_RATIO])
+    latest = sample[0]
+    latest_range = max(latest["high"] - latest["low"], 0.00001)
+    if bias == "BUY":
+        close_position = max(latest["close"] - latest["low"], 0.0) / latest_range
+    else:
+        close_position = max(latest["high"] - latest["close"], 0.0) / latest_range
+
+    regime_score = (aligned_count * 0.16) + (strong_aligned * 0.12) + (close_position * 0.18) - (opposing_count * 0.14)
+    regime_score = max(0.0, min(regime_score, 1.0))
+
+    if aligned_count < TREND_REGIME_ALIGNMENT_MIN:
+        return {"pass": False, "reason": f"trend_regime_alignment_weak:{aligned_count}/5", "score": round(regime_score, 4), "aligned_count": aligned_count, "opposing_count": opposing_count}
+    if strong_aligned < 2:
+        return {"pass": False, "reason": f"trend_regime_impulse_weak:{strong_aligned}", "score": round(regime_score, 4), "aligned_count": aligned_count, "opposing_count": opposing_count}
+    if close_position < TREND_REGIME_PULLBACK_TOLERANCE:
+        return {"pass": False, "reason": f"trend_regime_close_position_weak:{close_position:.2f}", "score": round(regime_score, 4), "aligned_count": aligned_count, "opposing_count": opposing_count}
+    if regime_score < TREND_REGIME_SCORE_MIN:
+        return {"pass": False, "reason": f"trend_regime_score_too_low:{regime_score:.2f}", "score": round(regime_score, 4), "aligned_count": aligned_count, "opposing_count": opposing_count}
+
+    return {
+        "pass": True,
+        "reason": "trend_regime_aligned",
+        "score": round(regime_score, 4),
+        "aligned_count": aligned_count,
+        "opposing_count": opposing_count,
+        "strong_aligned": strong_aligned,
+        "close_position": round(close_position, 4),
+    }
+
+
+def _slippage_cooldown_gate(snapshot: dict):
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    cooldown_until = runtime.get("slippage_cooldown_until")
+    if not cooldown_until:
+        return {"active": False, "reason": "slippage_cooldown_inactive"}
+    try:
+        cooldown_dt = __import__("datetime").datetime.fromisoformat(str(cooldown_until).replace("Z", "+00:00"))
+        snapshot_dt_raw = snapshot.get("timestamp_utc")
+        snapshot_dt = __import__("datetime").datetime.fromisoformat(str(snapshot_dt_raw).replace("Z", "+00:00")) if snapshot_dt_raw else __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        if snapshot_dt < cooldown_dt:
+            remaining = int(max((cooldown_dt - snapshot_dt).total_seconds(), 0.0))
+            return {"active": True, "reason": f"slippage_cooldown_active:{remaining}s"}
+    except Exception:
+        return {"active": True, "reason": "slippage_cooldown_active"}
+    return {"active": False, "reason": "slippage_cooldown_expired"}
+
+
+def _outcome_penalty(snapshot: dict, bias: str):
+    if not OUTCOME_PENALTY_ENABLED:
+        return {"penalty": 0.0, "reason": "outcome_penalty_disabled", "block": False}
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    loss_side = str(runtime.get("last_loss_side") or "").upper()
+    last_loss_at = runtime.get("last_loss_at")
+    consecutive_losses = runtime.get("consecutive_losses") if isinstance(runtime.get("consecutive_losses"), dict) else {}
+    same_side_losses = int(consecutive_losses.get(bias, 0) or 0)
+
+    penalty = min(same_side_losses * OUTCOME_PENALTY_CONSECUTIVE_LOSS_WEIGHT, OUTCOME_PENALTY_MAX)
+    reasons = []
+    if same_side_losses > 0:
+        reasons.append(f"same_side_losses:{same_side_losses}")
+
+    if loss_side == bias and last_loss_at:
+        try:
+            loss_dt = __import__("datetime").datetime.fromisoformat(str(last_loss_at).replace("Z", "+00:00"))
+            snapshot_dt_raw = snapshot.get("timestamp_utc")
+            snapshot_dt = __import__("datetime").datetime.fromisoformat(str(snapshot_dt_raw).replace("Z", "+00:00")) if snapshot_dt_raw else __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            age_sec = max((snapshot_dt - loss_dt).total_seconds(), 0.0)
+            if age_sec <= OUTCOME_PENALTY_WINDOW_SEC and loss_side == bias:
+                penalty += OUTCOME_PENALTY_RECENT_LOSS_WEIGHT
+                reasons.append(f"recent_same_side_loss:{int(age_sec)}s")
+        except Exception:
+            pass
+
+    penalty = min(penalty, OUTCOME_PENALTY_MAX)
+    block = same_side_losses >= OUTCOME_PENALTY_REVENGE_BLOCK_THRESHOLD and loss_side == bias
+    return {
+        "penalty": round(penalty, 4),
+        "reason": "|".join(reasons) if reasons else "no_recent_outcome_penalty",
+        "block": block,
+        "same_side_losses": same_side_losses,
+    }
+
+
+def _pattern_lockout(snapshot: dict, bias: str, structure_reason: str, trend_regime_reason: str):
+    if not PATTERN_LOCKOUT_ENABLED:
+        return {"penalty": 0.0, "reason": "pattern_lockout_disabled", "block": False, "count": 0}
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    recent_losses = runtime.get("recent_loss_patterns") if isinstance(runtime.get("recent_loss_patterns"), list) else []
+    pattern_key = f"{bias}|{structure_reason}|{trend_regime_reason}"
+    snapshot_ts_raw = snapshot.get("timestamp_utc")
+    try:
+        snapshot_dt = __import__("datetime").datetime.fromisoformat(str(snapshot_ts_raw).replace("Z", "+00:00")) if snapshot_ts_raw else __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    except Exception:
+        snapshot_dt = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+
+    matched = 0
+    for item in recent_losses:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("pattern_key") or "") != pattern_key:
+            continue
+        try:
+            loss_dt = __import__("datetime").datetime.fromisoformat(str(item.get("at")).replace("Z", "+00:00"))
+            age_sec = max((snapshot_dt - loss_dt).total_seconds(), 0.0)
+        except Exception:
+            age_sec = PATTERN_LOCKOUT_WINDOW_SEC + 1
+        if age_sec <= PATTERN_LOCKOUT_WINDOW_SEC:
+            matched += 1
+
+    block = matched >= PATTERN_LOCKOUT_THRESHOLD
+    penalty = PATTERN_LOCKOUT_PENALTY if matched > 0 else 0.0
+    return {
+        "penalty": penalty,
+        "reason": f"pattern_matches:{matched}|key:{pattern_key}",
+        "block": block,
+        "count": matched,
+        "pattern_key": pattern_key,
+    }
+
+
+def _journal_reason_penalty(snapshot: dict, bias: str, structure_reason: str, trend_regime_reason: str):
+    if not JOURNAL_REASON_SCORE_ENABLED:
+        return {"penalty": 0.0, "reason": "journal_reason_score_disabled", "loss_rate": None, "trade_count": 0}
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    reason_scores = runtime.get("reason_outcome_scores") if isinstance(runtime.get("reason_outcome_scores"), dict) else {}
+    key_candidates = [
+        f"side:{bias}",
+        f"structure:{structure_reason}",
+        f"trend:{trend_regime_reason}",
+        f"combo:{bias}|{structure_reason}|{trend_regime_reason}",
+    ]
+    penalties = []
+    descriptors = []
+    max_trade_count = 0
+    worst_loss_rate = None
+    for key in key_candidates:
+        item = reason_scores.get(key)
+        if not isinstance(item, dict):
+            continue
+        trade_count = int(item.get("trades", 0) or 0)
+        loss_count = int(item.get("losses", 0) or 0)
+        if trade_count < JOURNAL_REASON_SCORE_MIN_TRADES or trade_count <= 0:
+            continue
+        loss_rate = loss_count / trade_count
+        max_trade_count = max(max_trade_count, trade_count)
+        if worst_loss_rate is None or loss_rate > worst_loss_rate:
+            worst_loss_rate = loss_rate
+        if loss_rate >= 0.75:
+            penalties.append(JOURNAL_REASON_SCORE_MAX_PENALTY)
+        elif loss_rate >= 0.6:
+            penalties.append(JOURNAL_REASON_SCORE_MAX_PENALTY * 0.7)
+        elif loss_rate >= 0.5:
+            penalties.append(JOURNAL_REASON_SCORE_MAX_PENALTY * 0.4)
+        descriptors.append(f"{key}:{loss_count}/{trade_count}")
+
+    penalty = max(penalties) if penalties else 0.0
+    return {
+        "penalty": round(min(penalty, JOURNAL_REASON_SCORE_MAX_PENALTY), 4),
+        "reason": "|".join(descriptors) if descriptors else "no_reason_score_penalty",
+        "loss_rate": round(worst_loss_rate, 4) if worst_loss_rate is not None else None,
+        "trade_count": max_trade_count,
+    }
+
+
+def _exit_reason_penalty(snapshot: dict, session_bucket: str):
+    if not EXIT_REASON_PENALTY_ENABLED:
+        return {"penalty": 0.0, "reason": "exit_reason_penalty_disabled", "loss_rate": None, "trade_count": 0, "block": False}
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    reason_scores = runtime.get("reason_outcome_scores") if isinstance(runtime.get("reason_outcome_scores"), dict) else {}
+    key_candidates = [
+        "exit:STOP_LOSS",
+        "exit:GAP_SLIPPAGE_SL",
+        f"session_exit:{session_bucket}|STOP_LOSS",
+        f"session_exit:{session_bucket}|GAP_SLIPPAGE_SL",
+    ]
+    penalties = []
+    descriptors = []
+    worst_loss_rate = None
+    max_trade_count = 0
+    block = False
+    for key in key_candidates:
+        item = reason_scores.get(key)
+        if not isinstance(item, dict):
+            continue
+        trades = int(item.get("trades", 0) or 0)
+        losses = int(item.get("losses", 0) or 0)
+        if trades < EXIT_REASON_PENALTY_MIN_TRADES or trades <= 0:
+            continue
+        loss_rate = losses / trades
+        max_trade_count = max(max_trade_count, trades)
+        if worst_loss_rate is None or loss_rate > worst_loss_rate:
+            worst_loss_rate = loss_rate
+        if loss_rate >= EXIT_REASON_HARD_BLOCK_THRESHOLD and "GAP_SLIPPAGE_SL" in key:
+            block = True
+        if loss_rate >= 0.75:
+            penalties.append(EXIT_REASON_PENALTY_MAX)
+        elif loss_rate >= 0.6:
+            penalties.append(EXIT_REASON_PENALTY_MAX * 0.7)
+        elif loss_rate >= 0.5:
+            penalties.append(EXIT_REASON_PENALTY_MAX * 0.4)
+        descriptors.append(f"{key}:{losses}/{trades}")
+    penalty = max(penalties) if penalties else 0.0
+    return {
+        "penalty": round(min(penalty, EXIT_REASON_PENALTY_MAX), 4),
+        "reason": "|".join(descriptors) if descriptors else "no_exit_reason_penalty",
+        "loss_rate": round(worst_loss_rate, 4) if worst_loss_rate is not None else None,
+        "trade_count": max_trade_count,
+        "block": block,
+    }
+
+
+def _market_toxicity(snapshot: dict):
+    if not MARKET_TOXICITY_ENABLED:
+        return {"score": 0.0, "penalty": 0.0, "reason": "market_toxicity_disabled", "block": False}
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    spread_points = float(snapshot.get("spread_points") or 0.0)
+    symbol = normalize_symbol(snapshot.get("symbol"))
+    max_spread = float(get_max_spread(symbol) or 1.0)
+    spread_component = min(max(spread_points / max_spread, 0.0), 1.0)
+    slippage_events = runtime.get("recent_slippage_events") if isinstance(runtime.get("recent_slippage_events"), list) else []
+    slippage_component = min(len(slippage_events) / 3.0, 1.0)
+    reason_scores = runtime.get("reason_outcome_scores") if isinstance(runtime.get("reason_outcome_scores"), dict) else {}
+    exit_gap = reason_scores.get("exit:GAP_SLIPPAGE_SL") if isinstance(reason_scores.get("exit:GAP_SLIPPAGE_SL"), dict) else None
+    gap_loss_rate = 0.0
+    if exit_gap:
+        trades = int(exit_gap.get("trades", 0) or 0)
+        losses = int(exit_gap.get("losses", 0) or 0)
+        if trades > 0:
+            gap_loss_rate = losses / trades
+    score = min((spread_component * 0.35) + (slippage_component * 0.4) + (gap_loss_rate * 0.25), 1.0)
+    penalty = 0.0
+    if score >= 0.75:
+        penalty = MARKET_TOXICITY_PENALTY_MAX
+    elif score >= 0.6:
+        penalty = MARKET_TOXICITY_PENALTY_MAX * 0.7
+    elif score >= 0.45:
+        penalty = MARKET_TOXICITY_PENALTY_MAX * 0.4
+    return {
+        "score": round(score, 4),
+        "penalty": round(min(penalty, MARKET_TOXICITY_PENALTY_MAX), 4),
+        "reason": f"spread={spread_component:.2f}|slippage={slippage_component:.2f}|gap_loss={gap_loss_rate:.2f}",
+        "block": score >= MARKET_TOXICITY_HARD_BLOCK_THRESHOLD,
+    }
+
+
+def _auto_hardening(snapshot: dict, bias: str, structure_reason: str, trend_regime_reason: str):
+    if not AUTO_HARDENING_ENABLED:
+        return {"threshold_bonus": 0.0, "reason": "auto_hardening_disabled", "triggered": False}
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    reason_scores = runtime.get("reason_outcome_scores") if isinstance(runtime.get("reason_outcome_scores"), dict) else {}
+    key_candidates = [
+        f"side:{bias}",
+        f"structure:{structure_reason}",
+        f"trend:{trend_regime_reason}",
+        f"combo:{bias}|{structure_reason}|{trend_regime_reason}",
+    ]
+    triggered_keys = []
+    for key in key_candidates:
+        item = reason_scores.get(key)
+        if not isinstance(item, dict):
+            continue
+        trades = int(item.get("trades", 0) or 0)
+        losses = int(item.get("losses", 0) or 0)
+        if trades < JOURNAL_REASON_SCORE_MIN_TRADES or trades <= 0:
+            continue
+        loss_rate = losses / trades
+        if loss_rate >= AUTO_HARDENING_THRESHOLD:
+            triggered_keys.append(f"{key}:{losses}/{trades}")
+    triggered = len(triggered_keys) > 0
+    return {
+        "threshold_bonus": AUTO_HARDENING_THRESHOLD_BONUS if triggered else 0.0,
+        "reason": "|".join(triggered_keys) if triggered else "no_auto_hardening",
+        "triggered": triggered,
+    }
+
+
+def _apply_confidence_cap(raw_score: float, pf: dict) -> float:
+    if not MULTI_PENALTY_CONFIDENCE_CAP_ENABLED:
+        return raw_score
+    penalty_count = 0
+    for key in ["outcome_penalty", "market_toxicity_penalty", "pattern_lockout_penalty", "journal_reason_penalty", "session_penalty", "exit_reason_penalty"]:
+        if float(pf.get(key) or 0.0) > 0:
+            penalty_count += 1
+    if penalty_count >= MULTI_PENALTY_CONFIDENCE_CAP_THRESHOLD:
+        return min(raw_score, MULTI_PENALTY_CONFIDENCE_CAP_VALUE)
+    return raw_score
+
+
+def _session_bucket(snapshot: dict) -> str:
+    ts = snapshot.get("timestamp_utc")
+    if not ts:
+        return "UNKNOWN"
+    try:
+        dt = __import__("datetime").datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        hour = dt.hour
+    except Exception:
+        return "UNKNOWN"
+    if 0 <= hour < 7:
+        return "ASIA"
+    if 7 <= hour < 13:
+        return "LONDON"
+    if 13 <= hour < 21:
+        return "NY"
+    return "OFF_SESSION"
+
+
+def _session_hard_block(snapshot: dict, bias: str, session_bucket: str):
+    if not SESSION_HARD_BLOCK_ENABLED:
+        return {"block": False, "reason": "session_hard_block_disabled"}
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    reason_scores = runtime.get("reason_outcome_scores") if isinstance(runtime.get("reason_outcome_scores"), dict) else {}
+    keys = [f"session:{session_bucket}", f"session_side:{session_bucket}|{bias}"]
+    reasons = []
+    for key in keys:
+        item = reason_scores.get(key)
+        if not isinstance(item, dict):
+            continue
+        trades = int(item.get("trades", 0) or 0)
+        losses = int(item.get("losses", 0) or 0)
+        if trades < SESSION_HARD_BLOCK_MIN_TRADES or trades <= 0:
+            continue
+        loss_rate = losses / trades
+        if loss_rate >= SESSION_HARD_BLOCK_LOSS_RATE:
+            reasons.append(f"{key}:{losses}/{trades}")
+    return {"block": len(reasons) > 0, "reason": "|".join(reasons) if reasons else "session_hard_block_clear"}
+
+
+def _session_penalty(snapshot: dict, bias: str):
+    session_bucket = _session_bucket(snapshot)
+    if not SESSION_SCORING_ENABLED:
+        return {"penalty": 0.0, "reason": "session_scoring_disabled", "session_bucket": session_bucket, "loss_rate": None, "trade_count": 0}
+    runtime = snapshot.get("runtime_state") if isinstance(snapshot.get("runtime_state"), dict) else {}
+    reason_scores = runtime.get("reason_outcome_scores") if isinstance(runtime.get("reason_outcome_scores"), dict) else {}
+    key_candidates = [f"session:{session_bucket}", f"session_side:{session_bucket}|{bias}"]
+    penalties = []
+    descriptors = []
+    max_trade_count = 0
+    worst_loss_rate = None
+    for key in key_candidates:
+        item = reason_scores.get(key)
+        if not isinstance(item, dict):
+            continue
+        trades = int(item.get("trades", 0) or 0)
+        losses = int(item.get("losses", 0) or 0)
+        if trades < SESSION_SCORE_MIN_TRADES or trades <= 0:
+            continue
+        loss_rate = losses / trades
+        max_trade_count = max(max_trade_count, trades)
+        if worst_loss_rate is None or loss_rate > worst_loss_rate:
+            worst_loss_rate = loss_rate
+        if loss_rate >= 0.75:
+            penalties.append(SESSION_SCORE_MAX_PENALTY)
+        elif loss_rate >= 0.6:
+            penalties.append(SESSION_SCORE_MAX_PENALTY * 0.7)
+        elif loss_rate >= 0.5:
+            penalties.append(SESSION_SCORE_MAX_PENALTY * 0.4)
+        descriptors.append(f"{key}:{losses}/{trades}")
+    penalty = max(penalties) if penalties else 0.0
+    return {
+        "penalty": round(min(penalty, SESSION_SCORE_MAX_PENALTY), 4),
+        "reason": "|".join(descriptors) if descriptors else "no_session_penalty",
+        "session_bucket": session_bucket,
+        "loss_rate": round(worst_loss_rate, 4) if worst_loss_rate is not None else None,
+        "trade_count": max_trade_count,
+    }
 
 
 def prefilter(snapshot: dict):
@@ -175,9 +624,41 @@ def prefilter(snapshot: dict):
     if structure.get("bias") and structure["bias"] != bias:
         return {"pass": False, "reason": f"bias_conflict:{bias}_vs_{structure['bias']}"}
 
+    trend_regime = _trend_regime_gate(snapshot, bias)
+    if not trend_regime["pass"]:
+        return {"pass": False, "reason": trend_regime["reason"]}
+
+    slippage_cooldown = _slippage_cooldown_gate(snapshot)
+    if slippage_cooldown.get("active"):
+        return {"pass": False, "reason": slippage_cooldown.get("reason")}
+
+    market_toxicity = _market_toxicity(snapshot)
+    if market_toxicity.get("block"):
+        return {"pass": False, "reason": f"market_toxicity_block:{market_toxicity.get('reason')}"}
+
+    outcome_penalty = _outcome_penalty(snapshot, bias)
+    if outcome_penalty.get("block"):
+        return {"pass": False, "reason": f"outcome_revenge_block:{outcome_penalty.get('reason')}"}
+
+    pattern_lockout = _pattern_lockout(snapshot, bias, structure.get("reason", "unknown_structure"), trend_regime.get("reason", "unknown_trend"))
+    if pattern_lockout.get("block"):
+        return {"pass": False, "reason": f"pattern_lockout:{pattern_lockout.get('reason')}"}
+
+    journal_reason_penalty = _journal_reason_penalty(snapshot, bias, structure.get("reason", "unknown_structure"), trend_regime.get("reason", "unknown_trend"))
+    auto_hardening = _auto_hardening(snapshot, bias, structure.get("reason", "unknown_structure"), trend_regime.get("reason", "unknown_trend"))
+    session_penalty = _session_penalty(snapshot, bias)
+    session_hard_block = _session_hard_block(snapshot, bias, session_penalty.get("session_bucket", "UNKNOWN"))
+    if session_hard_block.get("block"):
+        return {"pass": False, "reason": f"session_hard_block:{session_hard_block.get('reason')}"}
+    exit_reason_penalty = _exit_reason_penalty(snapshot, session_penalty.get("session_bucket", "UNKNOWN"))
+    if exit_reason_penalty.get("block"):
+        return {"pass": False, "reason": f"exit_reason_hard_block:{exit_reason_penalty.get('reason')}"}
+
     entry = round((bid + ask) / 2.0, 5 if symbol != "XAUUSD" else 2)
     candle_range = max(high - low, 0.00001)
     body_ratio = abs(close - open_) / candle_range
+    close_to_high_ratio = max(high - close, 0.0) / candle_range
+    close_to_low_ratio = max(close - low, 0.0) / candle_range
     if bias == "BUY":
         late_distance = max(entry - low, 0.0)
     else:
@@ -185,10 +666,17 @@ def prefilter(snapshot: dict):
     late_ratio = late_distance / candle_range
     if late_ratio >= LATE_ENTRY_RANGE_FACTOR:
         return {"pass": False, "reason": f"late_entry:{late_ratio:.2f}"}
-    if body_ratio >= EXHAUSTION_BODY_RATIO and late_ratio >= 0.6:
+    if bias == "BUY" and close_to_high_ratio <= NO_CHASE_CLOSE_EXTREME_RATIO:
+        return {"pass": False, "reason": f"no_chase_buy:close_to_high={close_to_high_ratio:.2f}"}
+    if bias == "SELL" and close_to_low_ratio <= NO_CHASE_CLOSE_EXTREME_RATIO:
+        return {"pass": False, "reason": f"no_chase_sell:close_to_low={close_to_low_ratio:.2f}"}
+    if body_ratio >= EXHAUSTION_BODY_RATIO and late_ratio >= 0.5:
         return {"pass": False, "reason": f"exhaustion_risk:body={body_ratio:.2f},late={late_ratio:.2f}"}
 
     spread_quality = max(0.0, 1.0 - (spread / max_spread)) if max_spread > 0 else 0.0
+    if symbol == "XAUUSD" and spread_quality < 0.25:
+        return {"pass": False, "reason": f"poor_spread_quality:{spread_quality:.2f}"}
+
     return {
         "pass": True,
         "bias": bias,
@@ -201,38 +689,126 @@ def prefilter(snapshot: dict):
         "spread_quality": round(spread_quality, 4),
         "late_ratio": round(late_ratio, 4),
         "body_ratio": round(body_ratio, 4),
+        "close_to_high_ratio": round(close_to_high_ratio, 4),
+        "close_to_low_ratio": round(close_to_low_ratio, 4),
+        "structure_alignment": structure.get("aligned_count"),
+        "latest_structure_body_ratio": structure.get("latest_body_ratio"),
+        "prev1_structure_body_ratio": structure.get("prev1_body_ratio"),
+        "trend_regime_reason": trend_regime.get("reason"),
+        "trend_regime_score": trend_regime.get("score"),
+        "trend_regime_alignment": trend_regime.get("aligned_count"),
+        "trend_regime_opposing_count": trend_regime.get("opposing_count"),
+        "trend_regime_strong_aligned": trend_regime.get("strong_aligned"),
+        "trend_regime_close_position": trend_regime.get("close_position"),
+        "outcome_penalty": outcome_penalty.get("penalty"),
+        "outcome_penalty_reason": outcome_penalty.get("reason"),
+        "same_side_losses": outcome_penalty.get("same_side_losses"),
+        "market_toxicity_score": market_toxicity.get("score"),
+        "market_toxicity_penalty": market_toxicity.get("penalty"),
+        "market_toxicity_reason": market_toxicity.get("reason"),
+        "pattern_lockout_penalty": pattern_lockout.get("penalty"),
+        "pattern_lockout_reason": pattern_lockout.get("reason"),
+        "pattern_lockout_count": pattern_lockout.get("count"),
+        "pattern_lockout_key": pattern_lockout.get("pattern_key"),
+        "journal_reason_penalty": journal_reason_penalty.get("penalty"),
+        "journal_reason_penalty_reason": journal_reason_penalty.get("reason"),
+        "journal_reason_loss_rate": journal_reason_penalty.get("loss_rate"),
+        "journal_reason_trade_count": journal_reason_penalty.get("trade_count"),
+        "auto_hardening_threshold_bonus": auto_hardening.get("threshold_bonus"),
+        "auto_hardening_reason": auto_hardening.get("reason"),
+        "auto_hardening_triggered": auto_hardening.get("triggered"),
+        "session_bucket": session_penalty.get("session_bucket"),
+        "session_penalty": session_penalty.get("penalty"),
+        "session_penalty_reason": session_penalty.get("reason"),
+        "session_loss_rate": session_penalty.get("loss_rate"),
+        "session_trade_count": session_penalty.get("trade_count"),
+        "exit_reason_penalty": exit_reason_penalty.get("penalty"),
+        "exit_reason_penalty_reason": exit_reason_penalty.get("reason"),
+        "exit_reason_loss_rate": exit_reason_penalty.get("loss_rate"),
+        "exit_reason_trade_count": exit_reason_penalty.get("trade_count"),
     }
 
 
 def _score_prefilter_confidence(snapshot: dict, pf: dict) -> float:
-    confidence = 0.5
+    confidence = 0.42
     reason = str(pf.get("reason", ""))
-    if "recent_structure_buy" in reason or "recent_structure_sell" in reason:
-        confidence += 0.08
-    if "range_ok:" in reason:
+    if "recent_structure_strong" in reason:
+        confidence += 0.10
+    elif "recent_structure_supported" in reason:
         confidence += 0.05
+    if "range_ok:" in reason:
+        confidence += 0.04
 
     spread_quality = float(pf.get("spread_quality", 0.0))
-    confidence += min(max(spread_quality, 0.0), 1.0) * 0.1
+    confidence += min(max(spread_quality, 0.0), 1.0) * 0.08
 
     late_ratio = float(pf.get("late_ratio", 1.0))
-    confidence += max(0.0, (1.0 - late_ratio)) * 0.08
+    confidence += max(0.0, (1.0 - late_ratio)) * 0.06
+    if late_ratio > 0.45:
+        confidence -= 0.05
 
     body_ratio = float(pf.get("body_ratio", 0.0))
-    if 0.25 <= body_ratio <= 0.7:
-        confidence += 0.07
-    elif body_ratio > 0.85:
-        confidence -= 0.08
+    if 0.35 <= body_ratio <= 0.65:
+        confidence += 0.05
+    elif body_ratio > 0.78:
+        confidence -= 0.10
+
+    close_to_high_ratio = float(pf.get("close_to_high_ratio", 0.5))
+    close_to_low_ratio = float(pf.get("close_to_low_ratio", 0.5))
+    bias = pf.get("bias")
+    if bias == "BUY" and close_to_high_ratio < 0.18:
+        confidence -= 0.06
+    if bias == "SELL" and close_to_low_ratio < 0.18:
+        confidence -= 0.06
+
+    structure_alignment = int(pf.get("structure_alignment") or 0)
+    if structure_alignment == 3:
+        confidence += 0.08
+    elif structure_alignment == 2:
+        confidence += 0.03
+
+    trend_regime_score = float(pf.get("trend_regime_score") or 0.0)
+    trend_regime_alignment = int(pf.get("trend_regime_alignment") or 0)
+    if trend_regime_score >= 0.7:
+        confidence += 0.06
+    elif trend_regime_score < 0.6:
+        confidence -= 0.05
+    if trend_regime_alignment >= 4:
+        confidence += 0.04
+
+    outcome_penalty = float(pf.get("outcome_penalty") or 0.0)
+    if outcome_penalty > 0:
+        confidence -= outcome_penalty
+
+    market_toxicity_penalty = float(pf.get("market_toxicity_penalty") or 0.0)
+    if market_toxicity_penalty > 0:
+        confidence -= market_toxicity_penalty
+
+    pattern_lockout_penalty = float(pf.get("pattern_lockout_penalty") or 0.0)
+    if pattern_lockout_penalty > 0:
+        confidence -= pattern_lockout_penalty
+
+    journal_reason_penalty = float(pf.get("journal_reason_penalty") or 0.0)
+    if journal_reason_penalty > 0:
+        confidence -= journal_reason_penalty
+
+    session_penalty = float(pf.get("session_penalty") or 0.0)
+    if session_penalty > 0:
+        confidence -= session_penalty
+
+    exit_reason_penalty = float(pf.get("exit_reason_penalty") or 0.0)
+    if exit_reason_penalty > 0:
+        confidence -= exit_reason_penalty
 
     candles = _extract_recent_candles(snapshot)
     if len(candles) >= 3:
         same_dir = [_candle_direction(c) for c in candles[:3]]
         if len(set(same_dir)) == 1 and "FLAT" not in same_dir:
-            confidence += 0.1
+            confidence += 0.08
         elif len(set(same_dir)) == 2:
-            confidence -= 0.04
+            confidence -= 0.05
 
-    return max(0.0, min(confidence, 0.85))
+    return max(0.0, min(confidence, 0.82))
 
 
 def _deterministic_score(snapshot: dict, pf: dict) -> float:
@@ -240,13 +816,35 @@ def _deterministic_score(snapshot: dict, pf: dict) -> float:
     spread_quality = float(pf.get("spread_quality", 0.0))
     late_ratio = float(pf.get("late_ratio", 1.0))
     body_ratio = float(pf.get("body_ratio", 0.0))
-    score += spread_quality * 0.06
-    score += max(0.0, 1.0 - late_ratio) * 0.05
-    if 0.3 <= body_ratio <= 0.7:
-        score += 0.03
-    elif body_ratio > 0.85:
+    score += spread_quality * 0.05
+    score += max(0.0, 1.0 - late_ratio) * 0.04
+    if 0.35 <= body_ratio <= 0.65:
+        score += 0.02
+    elif body_ratio > 0.78:
+        score -= 0.08
+    if late_ratio > 0.45:
+        score -= 0.05
+    if float(pf.get("close_to_high_ratio", 0.5)) < 0.18 and pf.get("bias") == "BUY":
+        score -= 0.05
+    if float(pf.get("close_to_low_ratio", 0.5)) < 0.18 and pf.get("bias") == "SELL":
+        score -= 0.05
+    if int(pf.get("structure_alignment") or 0) == 3:
+        score += 0.04
+    trend_regime_score = float(pf.get("trend_regime_score") or 0.0)
+    if trend_regime_score >= 0.72:
+        score += 0.05
+    elif trend_regime_score < 0.6:
         score -= 0.06
-    return max(0.0, min(score, 0.95))
+    if int(pf.get("trend_regime_alignment") or 0) >= 4:
+        score += 0.03
+    score -= float(pf.get("outcome_penalty") or 0.0)
+    score -= float(pf.get("market_toxicity_penalty") or 0.0)
+    score -= float(pf.get("pattern_lockout_penalty") or 0.0)
+    score -= float(pf.get("journal_reason_penalty") or 0.0)
+    score -= float(pf.get("session_penalty") or 0.0)
+    score -= float(pf.get("exit_reason_penalty") or 0.0)
+    score = _apply_confidence_cap(score, pf)
+    return max(0.0, min(score, 0.9))
 
 
 def _adaptive_thresholds(pf: dict):
@@ -262,26 +860,66 @@ def _adaptive_thresholds(pf: dict):
     penalty = 0.0
     bonus = 0.0
 
-    if spread_quality < 0.35:
-        penalty += 0.03
-    elif spread_quality > 0.75:
+    if spread_quality < 0.45:
+        penalty += 0.04
+    elif spread_quality > 0.82:
         bonus += 0.01
 
-    if late_ratio > 0.6:
-        penalty += 0.03
-    elif late_ratio < 0.3:
-        bonus += 0.01
+    if late_ratio > 0.5:
+        penalty += 0.04
+    elif late_ratio < 0.25:
+        bonus += 0.005
 
-    if body_ratio > 0.75:
+    if body_ratio > 0.72:
+        penalty += 0.03
+    elif 0.35 <= body_ratio <= 0.58:
+        bonus += 0.005
+
+    if float(pf.get("close_to_high_ratio", 0.5)) < 0.18 and pf.get("bias") == "BUY":
         penalty += 0.02
-    elif 0.3 <= body_ratio <= 0.6:
-        bonus += 0.01
+    if float(pf.get("close_to_low_ratio", 0.5)) < 0.18 and pf.get("bias") == "SELL":
+        penalty += 0.02
+
+    if int(pf.get("structure_alignment") or 0) == 3:
+        bonus += 0.005
+    elif int(pf.get("structure_alignment") or 0) < 2:
+        penalty += 0.02
+
+    trend_regime_score = float(pf.get("trend_regime_score") or 0.0)
+    trend_regime_alignment = int(pf.get("trend_regime_alignment") or 0)
+    if trend_regime_score < 0.62:
+        penalty += 0.03
+    elif trend_regime_score > 0.78:
+        bonus += 0.005
+    if trend_regime_alignment < 3:
+        penalty += 0.02
+    elif trend_regime_alignment >= 4:
+        bonus += 0.005
+
+    penalty += float(pf.get("outcome_penalty") or 0.0)
+    penalty += float(pf.get("market_toxicity_penalty") or 0.0)
+    penalty += float(pf.get("pattern_lockout_penalty") or 0.0)
+    penalty += float(pf.get("journal_reason_penalty") or 0.0)
+    penalty += float(pf.get("session_penalty") or 0.0)
+    penalty += float(pf.get("exit_reason_penalty") or 0.0)
+    penalty += float(pf.get("auto_hardening_threshold_bonus") or 0.0)
 
     penalty = min(penalty, ADAPTIVE_THRESHOLD_MAX_PENALTY)
     bonus = min(bonus, ADAPTIVE_THRESHOLD_MAX_BONUS)
     trade_threshold = max(0.4, min(0.9, trade_threshold + penalty - bonus))
     no_trade_threshold = max(0.3, min(trade_threshold - 0.02, no_trade_threshold + (penalty * 0.7) - (bonus * 0.5)))
     return trade_threshold, no_trade_threshold
+
+
+def _quality_tier(score: float, pf: dict):
+    if not QUALITY_TIERING_ENABLED:
+        return {"tier": "UNSET", "label": "tiering_disabled", "penalty_count": 0}
+    penalty_count = len([1 for key in ["outcome_penalty", "market_toxicity_penalty", "pattern_lockout_penalty", "journal_reason_penalty", "session_penalty", "exit_reason_penalty"] if float(pf.get(key) or 0.0) > 0.0])
+    if score >= QUALITY_TIER_A_MIN and penalty_count <= 1:
+        return {"tier": "A", "label": "high_quality", "penalty_count": penalty_count}
+    if score >= QUALITY_TIER_B_MIN and penalty_count <= 3:
+        return {"tier": "B", "label": "acceptable_quality", "penalty_count": penalty_count}
+    return {"tier": "C", "label": "fragile_quality", "penalty_count": penalty_count}
 
 
 def decide_with_mock_gemini(snapshot: dict):
@@ -292,6 +930,10 @@ def decide_with_mock_gemini(snapshot: dict):
     trade_threshold, no_trade_threshold = _adaptive_thresholds(pf)
     decision = pf["bias"] if score >= trade_threshold else "NO_TRADE"
     reason = pf["reason"] if decision != "NO_TRADE" else f"deterministic_score_too_low:{score:.2f}|threshold={trade_threshold:.2f}|{pf['reason']}"
+    quality_tier = _quality_tier(score, pf)
+    if decision in {"BUY", "SELL"} and QUALITY_TIER_C_BLOCK_ENABLED and quality_tier.get("tier") == "C":
+        decision = "NO_TRADE"
+        reason = f"quality_tier_block:C|score={score:.2f}|{pf['reason']}"
     return {
         "decision": decision,
         "confidence": score,
@@ -302,6 +944,41 @@ def decide_with_mock_gemini(snapshot: dict):
         "deterministic_score": score,
         "adaptive_trade_threshold": trade_threshold,
         "adaptive_no_trade_threshold": no_trade_threshold,
+        "trend_regime_reason": pf.get("trend_regime_reason"),
+        "trend_regime_score": pf.get("trend_regime_score"),
+        "trend_regime_alignment": pf.get("trend_regime_alignment"),
+        "trend_regime_opposing_count": pf.get("trend_regime_opposing_count"),
+        "trend_regime_strong_aligned": pf.get("trend_regime_strong_aligned"),
+        "trend_regime_close_position": pf.get("trend_regime_close_position"),
+        "outcome_penalty": pf.get("outcome_penalty"),
+        "outcome_penalty_reason": pf.get("outcome_penalty_reason"),
+        "same_side_losses": pf.get("same_side_losses"),
+        "market_toxicity_score": pf.get("market_toxicity_score"),
+        "market_toxicity_penalty": pf.get("market_toxicity_penalty"),
+        "market_toxicity_reason": pf.get("market_toxicity_reason"),
+        "pattern_lockout_penalty": pf.get("pattern_lockout_penalty"),
+        "pattern_lockout_reason": pf.get("pattern_lockout_reason"),
+        "pattern_lockout_count": pf.get("pattern_lockout_count"),
+        "pattern_lockout_key": pf.get("pattern_lockout_key"),
+        "journal_reason_penalty": pf.get("journal_reason_penalty"),
+        "journal_reason_penalty_reason": pf.get("journal_reason_penalty_reason"),
+        "journal_reason_loss_rate": pf.get("journal_reason_loss_rate"),
+        "journal_reason_trade_count": pf.get("journal_reason_trade_count"),
+        "auto_hardening_threshold_bonus": pf.get("auto_hardening_threshold_bonus"),
+        "auto_hardening_reason": pf.get("auto_hardening_reason"),
+        "auto_hardening_triggered": pf.get("auto_hardening_triggered"),
+        "session_bucket": pf.get("session_bucket"),
+        "session_penalty": pf.get("session_penalty"),
+        "session_penalty_reason": pf.get("session_penalty_reason"),
+        "session_loss_rate": pf.get("session_loss_rate"),
+        "session_trade_count": pf.get("session_trade_count"),
+        "exit_reason_penalty": pf.get("exit_reason_penalty"),
+        "exit_reason_penalty_reason": pf.get("exit_reason_penalty_reason"),
+        "exit_reason_loss_rate": pf.get("exit_reason_loss_rate"),
+        "exit_reason_trade_count": pf.get("exit_reason_trade_count"),
+        "quality_tier": quality_tier.get("tier"),
+        "quality_tier_label": quality_tier.get("label"),
+        "quality_penalty_count": quality_tier.get("penalty_count"),
     }
 
 
@@ -452,7 +1129,7 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
 def decide_trade(snapshot: dict):
     pf = prefilter(snapshot)
     if not pf["pass"]:
-        return {"decision": "NO_TRADE", "confidence": 0.0, "reason": pf["reason"], "decision_source": "rule_gate"}
+        return {"decision": "NO_TRADE", "confidence": 0.0, "reason": pf["reason"], "decision_source": "rule_gate", "quality_tier": "C", "quality_tier_label": "blocked_by_rule_gate", "quality_penalty_count": 0}
 
     fallback = decide_with_mock_gemini(snapshot)
     fallback["decision_source"] = "mock"
@@ -474,6 +1151,34 @@ def decide_trade(snapshot: dict):
             fusion_score = max(0.0, min(0.95, deterministic_score + (trend_alignment * 0.06) + (entry_quality * 0.06) - (exhaustion_risk * 0.05) - (noise_risk * 0.04)))
         gemini_result["fusion_score"] = fusion_score
 
+        quality_tier = _quality_tier(fusion_score, pf)
+        gemini_result["quality_tier"] = quality_tier.get("tier")
+        gemini_result["quality_tier_label"] = quality_tier.get("label")
+        gemini_result["quality_penalty_count"] = quality_tier.get("penalty_count")
+        if gemini_result.get("decision") in {"BUY", "SELL"} and QUALITY_TIER_C_BLOCK_ENABLED and quality_tier.get("tier") == "C":
+            return {
+                "decision": "NO_TRADE",
+                "confidence": fusion_score,
+                "reason": f"quality_tier_block:C|fusion_score={fusion_score:.2f}|{gemini_result.get('reason')}",
+                "entry": gemini_result.get("entry"),
+                "symbol": gemini_result.get("symbol"),
+                "timeframe": gemini_result.get("timeframe"),
+                "decision_source": "quality_gate",
+                "evaluation": evaluation,
+                "deterministic_score": deterministic_score,
+                "fusion_score": fusion_score,
+                "adaptive_trade_threshold": adaptive_trade_threshold,
+                "adaptive_no_trade_threshold": adaptive_no_trade_threshold,
+                "trend_regime_reason": fallback.get("trend_regime_reason"),
+                "trend_regime_score": fallback.get("trend_regime_score"),
+                "trend_regime_alignment": fallback.get("trend_regime_alignment"),
+                "trend_regime_opposing_count": fallback.get("trend_regime_opposing_count"),
+                "trend_regime_strong_aligned": fallback.get("trend_regime_strong_aligned"),
+                "trend_regime_close_position": fallback.get("trend_regime_close_position"),
+                "quality_tier": quality_tier.get("tier"),
+                "quality_tier_label": quality_tier.get("label"),
+                "quality_penalty_count": quality_tier.get("penalty_count"),
+            }
         if gemini_result.get("decision") == fallback.get("decision"):
             gemini_result["deterministic_score"] = deterministic_score
             gemini_result["confidence"] = max(float(gemini_result.get("confidence", 0.0)), fusion_score)
@@ -492,6 +1197,12 @@ def decide_trade(snapshot: dict):
                     "fusion_score": fusion_score,
                     "adaptive_trade_threshold": adaptive_trade_threshold,
                     "adaptive_no_trade_threshold": adaptive_no_trade_threshold,
+                    "trend_regime_reason": fallback.get("trend_regime_reason"),
+                    "trend_regime_score": fallback.get("trend_regime_score"),
+                    "trend_regime_alignment": fallback.get("trend_regime_alignment"),
+                    "trend_regime_opposing_count": fallback.get("trend_regime_opposing_count"),
+                    "trend_regime_strong_aligned": fallback.get("trend_regime_strong_aligned"),
+                    "trend_regime_close_position": fallback.get("trend_regime_close_position"),
                 }
             _debug(f"Hybrid decision aligned with fallback decision={gemini_result.get('decision')}")
             return gemini_result
@@ -500,6 +1211,12 @@ def decide_trade(snapshot: dict):
             gemini_result["fusion_score"] = fusion_score
             gemini_result["adaptive_trade_threshold"] = adaptive_trade_threshold
             gemini_result["adaptive_no_trade_threshold"] = adaptive_no_trade_threshold
+            gemini_result["trend_regime_reason"] = fallback.get("trend_regime_reason")
+            gemini_result["trend_regime_score"] = fallback.get("trend_regime_score")
+            gemini_result["trend_regime_alignment"] = fallback.get("trend_regime_alignment")
+            gemini_result["trend_regime_opposing_count"] = fallback.get("trend_regime_opposing_count")
+            gemini_result["trend_regime_strong_aligned"] = fallback.get("trend_regime_strong_aligned")
+            gemini_result["trend_regime_close_position"] = fallback.get("trend_regime_close_position")
             _debug("Hybrid decision downgraded to NO_TRADE by Gemini")
             return gemini_result
         if fusion_score >= GEMINI_OVERRIDE_CONFIDENCE and float(gemini_result.get("confidence", 0.0)) >= MIN_CONFIDENCE:
@@ -509,6 +1226,12 @@ def decide_trade(snapshot: dict):
             gemini_result["fusion_score"] = fusion_score
             gemini_result["adaptive_trade_threshold"] = adaptive_trade_threshold
             gemini_result["adaptive_no_trade_threshold"] = adaptive_no_trade_threshold
+            gemini_result["trend_regime_reason"] = fallback.get("trend_regime_reason")
+            gemini_result["trend_regime_score"] = fallback.get("trend_regime_score")
+            gemini_result["trend_regime_alignment"] = fallback.get("trend_regime_alignment")
+            gemini_result["trend_regime_opposing_count"] = fallback.get("trend_regime_opposing_count")
+            gemini_result["trend_regime_strong_aligned"] = fallback.get("trend_regime_strong_aligned")
+            gemini_result["trend_regime_close_position"] = fallback.get("trend_regime_close_position")
             _debug(f"Hybrid override accepted decision={gemini_result.get('decision')} confidence={gemini_result.get('confidence')}")
             return gemini_result
         _debug("Hybrid override rejected, fallback kept")
