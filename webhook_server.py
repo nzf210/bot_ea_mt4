@@ -1847,6 +1847,22 @@ def _build_bridge_contract(data: dict):
     }
 
 
+def _signal_staleness(data: dict):
+    signal_age_sec = None
+    is_stale = None
+    issue = None
+    try:
+        ts = data.get("timestamp_utc")
+        max_age = float(data.get("max_signal_age_sec") or 0)
+        if ts:
+            signal_dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            signal_age_sec = round((datetime.now(timezone.utc) - signal_dt).total_seconds(), 2)
+            is_stale = bool(max_age > 0 and signal_age_sec > max_age)
+    except Exception:
+        issue = "timestamp_invalid"
+    return {"signal_age_sec": signal_age_sec, "is_stale": is_stale, "issue": issue}
+
+
 @app.get("/signal/latest")
 def latest_signal(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
@@ -1861,8 +1877,20 @@ def latest_signal(authorization: Optional[str] = Header(default=None)):
     news_blocked = active_news is not None
     if news_blocked:
         data["status"] = "BLOCKED_BY_NEWS"
+    stale = _signal_staleness(data)
     bridge_contract = _build_bridge_contract(data)
-    return {"ok": True, "signal": data, "bridge_contract": bridge_contract, "news_blocked": news_blocked, "active_news": active_news, "news_updated_at": NEWS_CACHE.get("updated_at")}
+    if stale.get("is_stale"):
+        return {
+            "ok": True,
+            "signal": None,
+            "bridge_contract": None,
+            "news_blocked": news_blocked,
+            "active_news": active_news,
+            "news_updated_at": NEWS_CACHE.get("updated_at"),
+            "stale_signal_dropped": True,
+            "stale_age_sec": stale.get("signal_age_sec"),
+        }
+    return {"ok": True, "signal": data, "bridge_contract": bridge_contract, "news_blocked": news_blocked, "active_news": active_news, "news_updated_at": NEWS_CACHE.get("updated_at"), "stale_signal_dropped": False, "stale_age_sec": stale.get("signal_age_sec")}
 
 
 @app.get("/contract/status")
@@ -1884,17 +1912,11 @@ def contract_status(authorization: Optional[str] = Header(default=None)):
     ]
     missing = [field for field in required_fields if bridge_contract.get(field) in (None, "")]
     issues = []
-    signal_age_sec = None
-    is_stale = None
-    try:
-        ts = bridge_contract.get("timestamp_utc")
-        if ts:
-            signal_dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-            signal_age_sec = round((datetime.now(timezone.utc) - signal_dt).total_seconds(), 2)
-            max_age = float(bridge_contract.get("max_signal_age_sec") or 0)
-            is_stale = bool(max_age > 0 and signal_age_sec > max_age)
-    except Exception:
-        issues.append("timestamp_invalid")
+    stale = _signal_staleness(data)
+    signal_age_sec = stale.get("signal_age_sec")
+    is_stale = stale.get("is_stale")
+    if stale.get("issue"):
+        issues.append(stale.get("issue"))
 
     try:
         entry_min = float(bridge_contract.get("entry_zone_min")) if bridge_contract.get("entry_zone_min") is not None else None
