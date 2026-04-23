@@ -3,4 +3,7 @@ __pycache__/
 .env
 news_cache.json
 latest_signal.json
+generated_signal.json
 journal.log
+runtime_state.json
+latest_market_snapshot.json

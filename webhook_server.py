@@ -1328,6 +1328,31 @@ def _read_journal_events(limit: int = 50, event_type: Optional[str] = None):
     return events
 
 
+def _classify_rejection_gate(reason: str) -> str:
+    reason = str(reason or "unknown")
+    if reason.startswith("outside_session:") or reason.startswith("session_hard_block:") or reason.startswith("session_bucket_cooldown_active:"):
+        return "session"
+    if reason.startswith("range_too_"):
+        return "volatility"
+    if "structure" in reason or reason.startswith("weak_last_candle:") or reason.startswith("weak_prev_candle:") or reason.startswith("bias_conflict:"):
+        return "structure"
+    if reason.startswith("trend_regime_"):
+        return "trend"
+    if reason.startswith("slippage_cooldown_active") or reason.startswith("poor_spread_quality:") or reason.startswith("spread_too_high:"):
+        return "execution"
+    if reason.startswith("outcome_revenge_block:") or reason.startswith("loss_cooldown_active") or reason.startswith("max_consecutive_losses_reached"):
+        return "outcome"
+    if reason.startswith("pattern_lockout:"):
+        return "pattern"
+    if reason.startswith("market_toxicity_block:"):
+        return "toxicity"
+    if reason.startswith("quality_tier_block:"):
+        return "quality"
+    if reason.startswith("position_open_") or reason.startswith("active_signal_") or reason.startswith("opposite_signal_blocked_") or reason.startswith("post_close_cooldown_active"):
+        return "conflict"
+    return "other"
+
+
 def _audit_summary(limit: int = 200):
     events = _read_journal_events(limit=limit)
     rejection_counts = {}
@@ -1374,53 +1399,11 @@ def _audit_summary(limit: int = 200):
             reason = str(item.get("reason") or "unknown")
             rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
             decision_funnel["snapshots_rejected"] += 1
-            if reason.startswith("outside_session:") or reason.startswith("session_hard_block:") or reason.startswith("session_bucket_cooldown_active:"):
-                gate_kill_breakdown["session"] += 1
-            elif reason.startswith("range_too_"):
-                gate_kill_breakdown["volatility"] += 1
-            elif "structure" in reason or reason.startswith("weak_last_candle:") or reason.startswith("weak_prev_candle:") or reason.startswith("bias_conflict:"):
-                gate_kill_breakdown["structure"] += 1
-            elif reason.startswith("trend_regime_"):
-                gate_kill_breakdown["trend"] += 1
-            elif reason.startswith("slippage_cooldown_active") or reason.startswith("poor_spread_quality:") or reason.startswith("spread_too_high:"):
-                gate_kill_breakdown["execution"] += 1
-            elif reason.startswith("outcome_revenge_block:") or reason.startswith("loss_cooldown_active") or reason.startswith("max_consecutive_losses_reached"):
-                gate_kill_breakdown["outcome"] += 1
-            elif reason.startswith("pattern_lockout:"):
-                gate_kill_breakdown["pattern"] += 1
-            elif reason.startswith("market_toxicity_block:"):
-                gate_kill_breakdown["toxicity"] += 1
-            elif reason.startswith("quality_tier_block:"):
-                gate_kill_breakdown["quality"] += 1
-            elif reason.startswith("position_open_") or reason.startswith("active_signal_") or reason.startswith("opposite_signal_blocked_") or reason.startswith("post_close_cooldown_active"):
-                gate_kill_breakdown["conflict"] += 1
-            else:
-                gate_kill_breakdown["other"] += 1
+            matched_gate = _classify_rejection_gate(reason)
+            gate_kill_breakdown[matched_gate] += 1
             session_bucket = str(item.get("session_bucket") or "UNKNOWN")
-            matched_gate = "other"
-            for gate_name, gate_count in gate_kill_breakdown.items():
-                pass
-            if reason.startswith("outside_session:") or reason.startswith("session_hard_block:") or reason.startswith("session_bucket_cooldown_active:"):
-                matched_gate = "session"
-            elif reason.startswith("range_too_"):
-                matched_gate = "volatility"
-            elif "structure" in reason or reason.startswith("weak_last_candle:") or reason.startswith("weak_prev_candle:") or reason.startswith("bias_conflict:"):
-                matched_gate = "structure"
-            elif reason.startswith("trend_regime_"):
-                matched_gate = "trend"
-            elif reason.startswith("slippage_cooldown_active") or reason.startswith("poor_spread_quality:") or reason.startswith("spread_too_high:"):
-                matched_gate = "execution"
-            elif reason.startswith("outcome_revenge_block:") or reason.startswith("loss_cooldown_active") or reason.startswith("max_consecutive_losses_reached"):
-                matched_gate = "outcome"
-            elif reason.startswith("pattern_lockout:"):
-                matched_gate = "pattern"
-            elif reason.startswith("market_toxicity_block:"):
-                matched_gate = "toxicity"
-            elif reason.startswith("quality_tier_block:"):
-                matched_gate = "quality"
-            elif reason.startswith("position_open_") or reason.startswith("active_signal_") or reason.startswith("opposite_signal_blocked_") or reason.startswith("post_close_cooldown_active"):
-                matched_gate = "conflict"
-            gate_session_matrix[f"{matched_gate}|{session_bucket}"] = gate_session_matrix.get(f"{matched_gate}|{session_bucket}", 0) + 1
+            session_map = gate_session_matrix.setdefault(matched_gate, {})
+            session_map[session_bucket] = session_map.get(session_bucket, 0) + 1
         if event_type == "signal_generated_from_snapshot":
             generated_signals.append(item)
             decision_funnel["signals_generated"] += 1
@@ -1528,10 +1511,14 @@ def _audit_summary(limit: int = 200):
     return {
         "decision_funnel": decision_funnel,
         "gate_kill_breakdown": gate_kill_breakdown,
-        "gate_session_matrix": [
-            {"key": key, "count": count}
-            for key, count in sorted(gate_session_matrix.items(), key=lambda kv: kv[1], reverse=True)[:20]
-        ],
+        "gate_session_matrix": {
+            gate: dict(sorted(session_map.items(), key=lambda kv: kv[1], reverse=True))
+            for gate, session_map in sorted(
+                gate_session_matrix.items(),
+                key=lambda kv: sum(kv[1].values()),
+                reverse=True,
+            )
+        },
         "top_rejection_reasons": top_rejections,
         "top_reason_loss_rates": top_reason_loss_rates,
         "top_exit_reasons": top_exit_reasons,
@@ -1881,25 +1868,67 @@ def latest_signal(authorization: Optional[str] = Header(default=None)):
 @app.get("/contract/status")
 def contract_status(authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
+    active_news = get_active_news_event(DEFAULT_NEWS_BLOCK_MINUTES)
+    news_blocked = active_news is not None
     if not os.path.exists(SIGNAL_STORE):
-        return {"ok": True, "signal_present": False, "bridge_contract": None, "validation": {"valid": False, "missing": ["signal"]}}
+        return {"ok": True, "signal_present": False, "bridge_contract": None, "validation": {"valid": False, "missing": ["signal"]}, "news_blocked": news_blocked, "active_news": active_news}
     with open(SIGNAL_STORE, "r", encoding="utf-8") as f:
         data = json.load(f)
+    block_minutes = data.get("market_context", {}).get("news_block_minutes", DEFAULT_NEWS_BLOCK_MINUTES)
+    active_news = get_active_news_event(block_minutes)
+    news_blocked = active_news is not None
     bridge_contract = _build_bridge_contract(data)
     required_fields = [
         "signal_id", "symbol", "side", "timestamp_utc", "stop_loss",
         "entry_zone_min", "entry_zone_max", "tp1_price", "max_signal_age_sec"
     ]
     missing = [field for field in required_fields if bridge_contract.get(field) in (None, "")]
+    issues = []
+    signal_age_sec = None
+    is_stale = None
+    try:
+        ts = bridge_contract.get("timestamp_utc")
+        if ts:
+            signal_dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            signal_age_sec = round((datetime.now(timezone.utc) - signal_dt).total_seconds(), 2)
+            max_age = float(bridge_contract.get("max_signal_age_sec") or 0)
+            is_stale = bool(max_age > 0 and signal_age_sec > max_age)
+    except Exception:
+        issues.append("timestamp_invalid")
+
+    try:
+        entry_min = float(bridge_contract.get("entry_zone_min")) if bridge_contract.get("entry_zone_min") is not None else None
+        entry_max = float(bridge_contract.get("entry_zone_max")) if bridge_contract.get("entry_zone_max") is not None else None
+        stop_loss = float(bridge_contract.get("stop_loss")) if bridge_contract.get("stop_loss") is not None else None
+        tp1_price = float(bridge_contract.get("tp1_price")) if bridge_contract.get("tp1_price") is not None else None
+        side = str(bridge_contract.get("side") or "")
+        if entry_min is not None and entry_max is not None and entry_min > entry_max:
+            issues.append("entry_zone_inverted")
+        if side == "BUY":
+            if stop_loss is not None and entry_min is not None and stop_loss >= entry_min:
+                issues.append("buy_stop_loss_not_below_entry")
+            if tp1_price is not None and entry_max is not None and tp1_price <= entry_max:
+                issues.append("buy_tp1_not_above_entry")
+        elif side == "SELL":
+            if stop_loss is not None and entry_max is not None and stop_loss <= entry_max:
+                issues.append("sell_stop_loss_not_above_entry")
+            if tp1_price is not None and entry_min is not None and tp1_price >= entry_min:
+                issues.append("sell_tp1_not_below_entry")
+    except Exception:
+        issues.append("geometry_validation_error")
+
     validation = {
-        "valid": len(missing) == 0,
+        "valid": len(missing) == 0 and len(issues) == 0 and not bool(is_stale),
         "missing": missing,
+        "issues": issues,
+        "signal_age_sec": signal_age_sec,
+        "is_stale": is_stale,
         "trailing_contract_present": any(bridge_contract.get(field) is not None for field in [
             "break_even_r_mult", "break_even_buffer_r_mult", "trailing_start_r_mult", "trailing_step_r_mult", "trailing_sl_r_mult"
         ]),
         "trailing_enabled": bridge_contract.get("trailing_enabled"),
     }
-    return {"ok": True, "signal_present": True, "bridge_contract": bridge_contract, "validation": validation}
+    return {"ok": True, "signal_present": True, "status": data.get("status"), "news_blocked": news_blocked, "active_news": active_news, "bridge_contract": bridge_contract, "validation": validation}
 
 
 @app.post("/execution/report")

@@ -69,7 +69,9 @@ string PersistKey(string suffix)
 void SaveTradeState()
 {
    GlobalVariableSet(PersistKey("ticket"), lastOpenTicket);
+   GlobalVariableSet(PersistKey("last_signal_id_len"), StringLen(lastSignalId));
    GlobalVariableSet(PersistKey("last_signal_ts"), lastSignalTimestamp);
+   GlobalVariableSet(PersistKey("last_processed_at"), lastProcessedAt);
    GlobalVariableSet(PersistKey("cooldown_until"), CooldownUntil);
    GlobalVariableSet(PersistKey("risk"), lastOpenInitialRiskPrice);
    GlobalVariableSet(PersistKey("sl"), lastOpenInitialStopLoss);
@@ -85,11 +87,35 @@ void SaveTradeState()
    GlobalVariableSet(PersistKey("trail_active"), lastTrailingActivated ? 1 : 0);
 }
 
+void SaveLastSignalId()
+{
+   GlobalVariableSet(PersistKey("last_signal_id_len"), StringLen(lastSignalId));
+   for(int i = 0; i < StringLen(lastSignalId) && i < 64; i++)
+      GlobalVariableSet(PersistKey("last_signal_id_" + IntegerToString(i)), StringGetCharacter(lastSignalId, i));
+}
+
+string LoadLastSignalId()
+{
+   int len = 0;
+   if(GlobalVariableCheck(PersistKey("last_signal_id_len")))
+      len = (int)GlobalVariableGet(PersistKey("last_signal_id_len"));
+   string result = "";
+   for(int i = 0; i < len && i < 64; i++)
+   {
+      if(!GlobalVariableCheck(PersistKey("last_signal_id_" + IntegerToString(i))))
+         break;
+      result += CharToStr((int)GlobalVariableGet(PersistKey("last_signal_id_" + IntegerToString(i))));
+   }
+   return result;
+}
+
 void ClearTradeState()
 {
-   string keys[15] = {"ticket","risk","sl","tp1","last_sl","be_r","be_buf","trail_start","trail_step","trail_sl","trail_enabled","be_active","trail_active","last_signal_ts","cooldown_until"};
+   string keys[17] = {"ticket","risk","sl","tp1","last_sl","be_r","be_buf","trail_start","trail_step","trail_sl","trail_enabled","be_active","trail_active","last_signal_ts","last_processed_at","cooldown_until","last_signal_id_len"};
    for(int i = 0; i < ArraySize(keys); i++)
       GlobalVariableDel(PersistKey(keys[i]));
+   for(int j = 0; j < 64; j++)
+      GlobalVariableDel(PersistKey("last_signal_id_" + IntegerToString(j)));
 }
 
 void RestoreOpenTradeState()
@@ -140,6 +166,9 @@ int OnInit()
       CooldownUntil = (datetime)GlobalVariableGet(PersistKey("cooldown_until"));
    if(GlobalVariableCheck(PersistKey("last_signal_ts")))
       lastSignalTimestamp = (datetime)GlobalVariableGet(PersistKey("last_signal_ts"));
+   if(GlobalVariableCheck(PersistKey("last_processed_at")))
+      lastProcessedAt = (datetime)GlobalVariableGet(PersistKey("last_processed_at"));
+   lastSignalId = LoadLastSignalId();
    RestoreOpenTradeState();
    return(INIT_SUCCEEDED);
 }
@@ -451,6 +480,7 @@ void OnTick()
       lastTrailingStepRMult = (trailingStepRMult > 0) ? trailingStepRMult : 0.5;
       lastTrailingSlRMult = (trailingSlRMult > 0) ? trailingSlRMult : 1.0;
       lastTrailingEnabled = (trailingEnabledRaw == 0) ? false : true;
+      SaveLastSignalId();
       SaveTradeState();
       Print("Trade opened for signal: ", signalId);
       SendExecutionReport(signalId, ticket, "OPEN", lot, price);
