@@ -31,7 +31,9 @@ NO_CHASE_CLOSE_EXTREME_RATIO = float(os.getenv("NO_CHASE_CLOSE_EXTREME_RATIO", "
 MIN_STRUCTURE_BODY_RATIO = float(os.getenv("MIN_STRUCTURE_BODY_RATIO", "0.28"))
 STRONG_BODY_RATIO = float(os.getenv("STRONG_BODY_RATIO", "0.45"))
 MISALIGNED_STRUCTURE_PENALTY = float(os.getenv("MISALIGNED_STRUCTURE_PENALTY", "0.05"))
-MISALIGNED_STRUCTURE_STRONG_BODY_THRESHOLD = float(os.getenv("MISALIGNED_STRUCTURE_STRONG_BODY_THRESHOLD", "0.48"))
+MISALIGNED_STRUCTURE_STRONG_BODY_THRESHOLD = float(os.getenv("MISALIGNED_STRUCTURE_STRONG_BODY_THRESHOLD", "0.38"))
+INSUFFICIENT_ALIGNMENT_SOFT_PENALTY = float(os.getenv("INSUFFICIENT_ALIGNMENT_SOFT_PENALTY", "0.06"))
+INSUFFICIENT_ALIGNMENT_STRONG_BODY_THRESHOLD = float(os.getenv("INSUFFICIENT_ALIGNMENT_STRONG_BODY_THRESHOLD", "0.52"))
 TREND_REGIME_MIN_BODY_RATIO = float(os.getenv("TREND_REGIME_MIN_BODY_RATIO", "0.22"))
 TREND_REGIME_ALIGNMENT_MIN = int(os.getenv("TREND_REGIME_ALIGNMENT_MIN", "3"))
 TREND_REGIME_SCORE_MIN = float(os.getenv("TREND_REGIME_SCORE_MIN", "0.58"))
@@ -198,7 +200,11 @@ def _recent_structure_gate(snapshot: dict):
 
     aligned_count = len([d for d in [latest_dir, prev1_dir, prev2_dir] if d == latest_dir])
     if aligned_count < 2:
-        return {"pass": False, "reason": "insufficient_directional_alignment"}
+        if latest_body_ratio >= INSUFFICIENT_ALIGNMENT_STRONG_BODY_THRESHOLD:
+            soft_penalty = max(soft_penalty, INSUFFICIENT_ALIGNMENT_SOFT_PENALTY)
+            soft_reason = (soft_reason + "|" if soft_reason else "") + "insufficient_directional_alignment_soft"
+        else:
+            return {"pass": False, "reason": "insufficient_directional_alignment"}
 
     if latest_body_ratio < STRONG_BODY_RATIO and prev1_body_ratio < STRONG_BODY_RATIO:
         return {"pass": False, "reason": f"weak_structure_impulse:{latest_body_ratio:.2f},{prev1_body_ratio:.2f}"}
@@ -245,7 +251,7 @@ def _trend_regime_gate(snapshot: dict, bias: str):
     soft_penalty = 0.0
     soft_reason = None
     if aligned_count < TREND_REGIME_ALIGNMENT_MIN:
-        if aligned_count >= TREND_REGIME_SOFT_ALIGNMENT_ALLOWED and regime_score >= max(TREND_REGIME_SCORE_MIN - 0.08, 0.0):
+        if aligned_count >= TREND_REGIME_SOFT_ALIGNMENT_ALLOWED and regime_score >= max(TREND_REGIME_SCORE_MIN - 0.14, 0.0):
             soft_penalty = TREND_REGIME_SOFT_ALIGNMENT_PENALTY
             soft_reason = f"trend_regime_alignment_soft:{aligned_count}/5"
         else:
