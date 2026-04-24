@@ -113,6 +113,16 @@ WEAK_TREND_SL_MULT = float(os.getenv("WEAK_TREND_SL_MULT", "1.08"))
 WEAK_TREND_TP_MULT = float(os.getenv("WEAK_TREND_TP_MULT", "0.95"))
 STRONG_TREND_SL_MULT = float(os.getenv("STRONG_TREND_SL_MULT", "0.96"))
 STRONG_TREND_TP_MULT = float(os.getenv("STRONG_TREND_TP_MULT", "1.05"))
+MARKET_MODE_TRENDING_SL_MULT = float(os.getenv("MARKET_MODE_TRENDING_SL_MULT", "1.1"))
+MARKET_MODE_TRENDING_TP_MULT = float(os.getenv("MARKET_MODE_TRENDING_TP_MULT", "1.08"))
+MARKET_MODE_BALANCED_SL_MULT = float(os.getenv("MARKET_MODE_BALANCED_SL_MULT", "1.0"))
+MARKET_MODE_BALANCED_TP_MULT = float(os.getenv("MARKET_MODE_BALANCED_TP_MULT", "1.0"))
+MARKET_MODE_CHOPPY_SL_MULT = float(os.getenv("MARKET_MODE_CHOPPY_SL_MULT", "0.98"))
+MARKET_MODE_CHOPPY_TP_MULT = float(os.getenv("MARKET_MODE_CHOPPY_TP_MULT", "0.95"))
+MARKET_MODE_TOXIC_SL_MULT = float(os.getenv("MARKET_MODE_TOXIC_SL_MULT", "0.95"))
+MARKET_MODE_TOXIC_TP_MULT = float(os.getenv("MARKET_MODE_TOXIC_TP_MULT", "0.92"))
+TRENDING_SELL_EXTRA_SL_MULT = float(os.getenv("TRENDING_SELL_EXTRA_SL_MULT", "1.05"))
+TRENDING_SELL_EXTRA_TP_MULT = float(os.getenv("TRENDING_SELL_EXTRA_TP_MULT", "1.03"))
 
 NEWS_CACHE = {
     "latest": [],
@@ -553,9 +563,24 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
             geometry_tp_mult = NY_TP_MULT
 
     if market_mode == "TOXIC":
-        conservative_factor *= 1.15
+        conservative_factor *= 1.12
     elif market_mode == "TRENDING":
-        conservative_factor *= 0.97
+        conservative_factor *= 1.02
+
+    market_mode_sl_mult = 1.0
+    market_mode_tp_mult = 1.0
+    if market_mode == "TRENDING":
+        market_mode_sl_mult = MARKET_MODE_TRENDING_SL_MULT
+        market_mode_tp_mult = MARKET_MODE_TRENDING_TP_MULT
+    elif market_mode == "BALANCED":
+        market_mode_sl_mult = MARKET_MODE_BALANCED_SL_MULT
+        market_mode_tp_mult = MARKET_MODE_BALANCED_TP_MULT
+    elif market_mode == "CHOPPY":
+        market_mode_sl_mult = MARKET_MODE_CHOPPY_SL_MULT
+        market_mode_tp_mult = MARKET_MODE_CHOPPY_TP_MULT
+    elif market_mode == "TOXIC":
+        market_mode_sl_mult = MARKET_MODE_TOXIC_SL_MULT
+        market_mode_tp_mult = MARKET_MODE_TOXIC_TP_MULT
 
     trend_geometry_sl_mult = 1.0
     trend_geometry_tp_mult = 1.0
@@ -568,6 +593,11 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
             trend_geometry_tp_mult = STRONG_TREND_TP_MULT
     geometry_sl_mult *= trend_geometry_sl_mult
     geometry_tp_mult *= trend_geometry_tp_mult
+    geometry_sl_mult *= market_mode_sl_mult
+    geometry_tp_mult *= market_mode_tp_mult
+    if market_mode == "TRENDING" and decision == "SELL":
+        geometry_sl_mult *= TRENDING_SELL_EXTRA_SL_MULT
+        geometry_tp_mult *= TRENDING_SELL_EXTRA_TP_MULT
 
     if symbol == "XAUUSD":
         zone = _clamp(candle_range * XAU_ENTRY_ZONE_RANGE_MULT * session_zone_mult, XAU_ENTRY_ZONE_MIN, XAU_ENTRY_ZONE_MAX)
@@ -647,6 +677,8 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
             "geometry_tp_session_mult": round(geometry_tp_mult, 4),
             "geometry_trend_sl_mult": round(trend_geometry_sl_mult, 4),
             "geometry_trend_tp_mult": round(trend_geometry_tp_mult, 4),
+            "geometry_market_mode_sl_mult": round(market_mode_sl_mult, 4),
+            "geometry_market_mode_tp_mult": round(market_mode_tp_mult, 4),
             "snapshot_range": round(candle_range, digits),
             "sl_distance": round(sl_offset, digits),
             "tp1_distance": round(tp1_offset, digits),
@@ -1420,6 +1452,9 @@ def _audit_summary(limit: int = 200):
         "0.60-0.79": 0,
         "0.80-1.00": 0,
     }
+    geometry_market_mode_sl_mult_counts = {}
+    geometry_market_mode_tp_mult_counts = {}
+    geometry_market_mode_side_counts = {}
     generated_by_signal_id = {}
     for item in events:
         event_type = str(item.get("type") or item.get("event_type") or "")
@@ -1439,6 +1474,21 @@ def _audit_summary(limit: int = 200):
                 toxicity_score = float(item.get("market_toxicity_score") or 0.0)
             except Exception:
                 toxicity_score = 0.0
+            market_context = item.get("market_context") if isinstance(item.get("market_context"), dict) else {}
+            geometry_sl_mult = market_context.get("geometry_market_mode_sl_mult")
+            geometry_tp_mult = market_context.get("geometry_market_mode_tp_mult")
+            side = str(item.get("side") or "UNKNOWN").upper()
+            market_mode = str(item.get("market_mode") or market_context.get("market_mode") or "UNKNOWN").upper()
+            if geometry_sl_mult is not None:
+                sl_key = f"{float(geometry_sl_mult):.2f}"
+                geometry_market_mode_sl_mult_counts[sl_key] = geometry_market_mode_sl_mult_counts.get(sl_key, 0) + 1
+                side_key = f"{market_mode}|{side}|SL|{sl_key}"
+                geometry_market_mode_side_counts[side_key] = geometry_market_mode_side_counts.get(side_key, 0) + 1
+            if geometry_tp_mult is not None:
+                tp_key = f"{float(geometry_tp_mult):.2f}"
+                geometry_market_mode_tp_mult_counts[tp_key] = geometry_market_mode_tp_mult_counts.get(tp_key, 0) + 1
+                side_key = f"{market_mode}|{side}|TP|{tp_key}"
+                geometry_market_mode_side_counts[side_key] = geometry_market_mode_side_counts.get(side_key, 0) + 1
             if toxicity_score < 0.2:
                 market_toxicity_histogram["0.00-0.19"] += 1
             elif toxicity_score < 0.4:
@@ -1554,6 +1604,9 @@ def _audit_summary(limit: int = 200):
         "top_block_reasons": top_block_reasons,
         "top_session_quality_loss_rates": top_session_quality_loss_rates,
         "market_toxicity_histogram": market_toxicity_histogram,
+        "geometry_market_mode_sl_mult_counts": dict(sorted(geometry_market_mode_sl_mult_counts.items(), key=lambda kv: kv[1], reverse=True)),
+        "geometry_market_mode_tp_mult_counts": dict(sorted(geometry_market_mode_tp_mult_counts.items(), key=lambda kv: kv[1], reverse=True)),
+        "geometry_market_mode_side_counts": dict(sorted(geometry_market_mode_side_counts.items(), key=lambda kv: kv[1], reverse=True)[:20]),
         "recent_executions": executions[:10],
         "recent_generated_signals": generated_signals[:10],
         "recent_errors": recent_errors[:10],
