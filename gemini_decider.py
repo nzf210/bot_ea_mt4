@@ -1,8 +1,6 @@
 import json
 import os
-import shutil
-import subprocess
-import tempfile
+import httpx
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(__file__)
@@ -14,6 +12,8 @@ SYMBOL_ALIASES = {
 }
 GEMINI_ENABLED = os.getenv("GEMINI_DECIDER_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 GEMINI_MODEL = os.getenv("GEMINI_DECIDER_MODEL", "gemini-2.5-flash")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_API_URL = os.getenv("GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta/models")
 XAU_MAX_SPREAD = int(os.getenv("XAU_MAX_SPREAD_POINTS", "120"))
 FOREX_MAX_SPREAD = int(os.getenv("FOREX_MAX_SPREAD_POINTS", "35"))
 MIN_CONFIDENCE = float(os.getenv("GEMINI_MIN_CONFIDENCE", "0.55"))
@@ -93,10 +93,12 @@ MARKET_MODE_TRENDING_B_TIER_MAX_PENALTIES = int(os.getenv("MARKET_MODE_TRENDING_
 GEMINI_RUNTIME_STATE = {
     "enabled": GEMINI_ENABLED,
     "model": GEMINI_MODEL,
+    "api_configured": bool(GEMINI_API_KEY),
     "binary_found": False,
     "binary_path": None,
     "last_error": None,
     "last_return_code": None,
+    "last_http_status": None,
     "last_decision_source": None,
 }
 
@@ -1115,11 +1117,11 @@ def _gemini_prompt(snapshot: dict, pf: dict) -> str:
 
 
 def get_gemini_runtime_state():
-    gemini_bin = shutil.which("gemini")
     GEMINI_RUNTIME_STATE["enabled"] = GEMINI_ENABLED
     GEMINI_RUNTIME_STATE["model"] = GEMINI_MODEL
-    GEMINI_RUNTIME_STATE["binary_found"] = bool(gemini_bin)
-    GEMINI_RUNTIME_STATE["binary_path"] = gemini_bin
+    GEMINI_RUNTIME_STATE["api_configured"] = bool(GEMINI_API_KEY)
+    GEMINI_RUNTIME_STATE["binary_found"] = False
+    GEMINI_RUNTIME_STATE["binary_path"] = None
     state = dict(GEMINI_RUNTIME_STATE)
     state["last_mode"] = state.get("last_decision_source")
     return state
@@ -1142,39 +1144,52 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
     if not GEMINI_ENABLED:
         _debug("Gemini disabled by config, using fallback")
         return None
-    gemini_bin = shutil.which("gemini")
-    GEMINI_RUNTIME_STATE["binary_found"] = bool(gemini_bin)
-    GEMINI_RUNTIME_STATE["binary_path"] = gemini_bin
-    if not gemini_bin:
-        GEMINI_RUNTIME_STATE["last_error"] = "gemini_cli_not_found"
+    GEMINI_RUNTIME_STATE["api_configured"] = bool(GEMINI_API_KEY)
+    GEMINI_RUNTIME_STATE["binary_found"] = False
+    GEMINI_RUNTIME_STATE["binary_path"] = None
+    if not GEMINI_API_KEY:
+        GEMINI_RUNTIME_STATE["last_error"] = "gemini_api_key_missing"
         GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
-        _debug("Gemini CLI not found, using fallback")
+        _debug("Gemini API key missing, using fallback")
         return None
+
     prompt = _gemini_prompt(snapshot, pf)
-    prompt_file = None
+    endpoint = f"{GEMINI_API_URL}/{GEMINI_MODEL}:generateContent"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "topP": 0.8,
+            "topK": 20,
+            "maxOutputTokens": 400,
+            "responseMimeType": "application/json",
+        },
+    }
     try:
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False, dir=BASE_DIR) as f:
-            f.write(prompt)
-            prompt_file = f.name
-        result = subprocess.run(
-            [gemini_bin, "-m", GEMINI_MODEL, "-p", "@" + prompt_file, "-o", "json"],
-            capture_output=True,
-            text=True,
-            timeout=45,
-            cwd=BASE_DIR,
-        )
-        GEMINI_RUNTIME_STATE["last_return_code"] = result.returncode
-        if result.returncode != 0:
-            GEMINI_RUNTIME_STATE["last_error"] = (result.stderr or result.stdout or "gemini_cli_failed").strip()[:300]
+        with httpx.Client(timeout=45.0) as client:
+            response = client.post(endpoint, params={"key": GEMINI_API_KEY}, json=payload)
+        GEMINI_RUNTIME_STATE["last_http_status"] = response.status_code
+        GEMINI_RUNTIME_STATE["last_return_code"] = 0 if response.is_success else response.status_code
+        if not response.is_success:
+            GEMINI_RUNTIME_STATE["last_error"] = response.text[:300]
             GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
-            _debug(f"Gemini CLI failed rc={result.returncode}, stderr={(result.stderr or '').strip()[:300]}")
+            _debug(f"Gemini API failed status={response.status_code}, body={response.text[:300]}")
             return None
-        raw = (result.stdout or "").strip()
+
+        data = response.json()
+        candidates = data.get("candidates") or []
+        parts = (((candidates[0] or {}).get("content") or {}).get("parts") or []) if candidates else []
+        raw = ""
+        for part in parts:
+            if isinstance(part, dict) and part.get("text"):
+                raw += str(part.get("text"))
+        raw = raw.strip()
         if not raw:
             GEMINI_RUNTIME_STATE["last_error"] = "gemini_empty_output"
             GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
             _debug("Gemini returned empty output, using fallback")
             return None
+
         parsed = json.loads(raw)
         decision = str(parsed.get("decision", "NO_TRADE")).upper()
         confidence = float(parsed.get("confidence", 0.0))
@@ -1224,12 +1239,6 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
         GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
         _debug(f"Gemini exception {e}, using fallback")
         return None
-    finally:
-        if prompt_file:
-            try:
-                os.remove(prompt_file)
-            except Exception:
-                pass
 
 
 def decide_trade(snapshot: dict):
