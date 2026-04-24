@@ -82,6 +82,10 @@ BREAK_EVEN_BUFFER_R_MULT = float(os.getenv("BREAK_EVEN_BUFFER_R_MULT", "0.12"))
 TRAILING_START_R_MULT = float(os.getenv("TRAILING_START_R_MULT", "1.2"))
 TRAILING_STEP_R_MULT = float(os.getenv("TRAILING_STEP_R_MULT", "0.4"))
 TRAILING_SL_R_MULT = float(os.getenv("TRAILING_SL_R_MULT", "0.85"))
+TIME_BASED_TRAILING_ENABLED = os.getenv("TIME_BASED_TRAILING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("TIME_BASED_TRAILING_AFTER_SEC", "600"))
+TIME_BASED_TRAILING_MIN_R_MULT = float(os.getenv("TIME_BASED_TRAILING_MIN_R_MULT", "0.25"))
+TIME_BASED_TRAILING_SL_R_MULT = float(os.getenv("TIME_BASED_TRAILING_SL_R_MULT", "0.18"))
 SLIPPAGE_COOLDOWN_ENABLED = os.getenv("SLIPPAGE_COOLDOWN_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 SLIPPAGE_COOLDOWN_WINDOW_SEC = int(os.getenv("SLIPPAGE_COOLDOWN_WINDOW_SEC", "10800"))
 SLIPPAGE_COOLDOWN_THRESHOLD = int(os.getenv("SLIPPAGE_COOLDOWN_THRESHOLD", "2"))
@@ -97,6 +101,24 @@ LONDON_TRAILING_START_R_MULT = float(os.getenv("LONDON_TRAILING_START_R_MULT", "
 LONDON_TRAILING_STEP_R_MULT = float(os.getenv("LONDON_TRAILING_STEP_R_MULT", "0.35"))
 NY_TRAILING_START_R_MULT = float(os.getenv("NY_TRAILING_START_R_MULT", "1.05"))
 NY_TRAILING_STEP_R_MULT = float(os.getenv("NY_TRAILING_STEP_R_MULT", "0.3"))
+ASIA_TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("ASIA_TIME_BASED_TRAILING_AFTER_SEC", "720"))
+LONDON_TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("LONDON_TIME_BASED_TRAILING_AFTER_SEC", "600"))
+NY_TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("NY_TIME_BASED_TRAILING_AFTER_SEC", "480"))
+TRENDING_TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("TRENDING_TIME_BASED_TRAILING_AFTER_SEC", "720"))
+BALANCED_TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("BALANCED_TIME_BASED_TRAILING_AFTER_SEC", "600"))
+CHOPPY_TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("CHOPPY_TIME_BASED_TRAILING_AFTER_SEC", "420"))
+TOXIC_TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("TOXIC_TIME_BASED_TRAILING_AFTER_SEC", "360"))
+QUIET_TIME_BASED_TRAILING_AFTER_SEC = int(os.getenv("QUIET_TIME_BASED_TRAILING_AFTER_SEC", "540"))
+TRENDING_TIME_BASED_TRAILING_MIN_R_MULT = float(os.getenv("TRENDING_TIME_BASED_TRAILING_MIN_R_MULT", "0.35"))
+BALANCED_TIME_BASED_TRAILING_MIN_R_MULT = float(os.getenv("BALANCED_TIME_BASED_TRAILING_MIN_R_MULT", "0.25"))
+CHOPPY_TIME_BASED_TRAILING_MIN_R_MULT = float(os.getenv("CHOPPY_TIME_BASED_TRAILING_MIN_R_MULT", "0.18"))
+TOXIC_TIME_BASED_TRAILING_MIN_R_MULT = float(os.getenv("TOXIC_TIME_BASED_TRAILING_MIN_R_MULT", "0.12"))
+QUIET_TIME_BASED_TRAILING_MIN_R_MULT = float(os.getenv("QUIET_TIME_BASED_TRAILING_MIN_R_MULT", "0.20"))
+TRENDING_TIME_BASED_TRAILING_SL_R_MULT = float(os.getenv("TRENDING_TIME_BASED_TRAILING_SL_R_MULT", "0.28"))
+BALANCED_TIME_BASED_TRAILING_SL_R_MULT = float(os.getenv("BALANCED_TIME_BASED_TRAILING_SL_R_MULT", "0.18"))
+CHOPPY_TIME_BASED_TRAILING_SL_R_MULT = float(os.getenv("CHOPPY_TIME_BASED_TRAILING_SL_R_MULT", "0.10"))
+TOXIC_TIME_BASED_TRAILING_SL_R_MULT = float(os.getenv("TOXIC_TIME_BASED_TRAILING_SL_R_MULT", "0.06"))
+QUIET_TIME_BASED_TRAILING_SL_R_MULT = float(os.getenv("QUIET_TIME_BASED_TRAILING_SL_R_MULT", "0.14"))
 ADAPTIVE_ENTRY_ZONE_ENABLED = os.getenv("ADAPTIVE_ENTRY_ZONE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 ASIA_ENTRY_ZONE_MULT = float(os.getenv("ASIA_ENTRY_ZONE_MULT", "0.85"))
 LONDON_ENTRY_ZONE_MULT = float(os.getenv("LONDON_ENTRY_ZONE_MULT", "1.0"))
@@ -631,16 +653,43 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
 
     trailing_start_r_mult = TRAILING_START_R_MULT
     trailing_step_r_mult = TRAILING_STEP_R_MULT
+    time_based_trailing_after_sec = TIME_BASED_TRAILING_AFTER_SEC
+    time_based_trailing_min_r_mult = TIME_BASED_TRAILING_MIN_R_MULT
+    time_based_trailing_sl_r_mult = TIME_BASED_TRAILING_SL_R_MULT
     if ADAPTIVE_TRAILING_ENABLED:
         if session_bucket == "ASIA":
             trailing_start_r_mult = ASIA_TRAILING_START_R_MULT
             trailing_step_r_mult = ASIA_TRAILING_STEP_R_MULT
+            time_based_trailing_after_sec = ASIA_TIME_BASED_TRAILING_AFTER_SEC
         elif session_bucket == "LONDON":
             trailing_start_r_mult = LONDON_TRAILING_START_R_MULT
             trailing_step_r_mult = LONDON_TRAILING_STEP_R_MULT
+            time_based_trailing_after_sec = LONDON_TIME_BASED_TRAILING_AFTER_SEC
         elif session_bucket == "NY":
             trailing_start_r_mult = NY_TRAILING_START_R_MULT
             trailing_step_r_mult = NY_TRAILING_STEP_R_MULT
+            time_based_trailing_after_sec = NY_TIME_BASED_TRAILING_AFTER_SEC
+
+    if market_mode == "TRENDING":
+        time_based_trailing_after_sec = TRENDING_TIME_BASED_TRAILING_AFTER_SEC
+        time_based_trailing_min_r_mult = TRENDING_TIME_BASED_TRAILING_MIN_R_MULT
+        time_based_trailing_sl_r_mult = TRENDING_TIME_BASED_TRAILING_SL_R_MULT
+    elif market_mode == "BALANCED":
+        time_based_trailing_after_sec = BALANCED_TIME_BASED_TRAILING_AFTER_SEC
+        time_based_trailing_min_r_mult = BALANCED_TIME_BASED_TRAILING_MIN_R_MULT
+        time_based_trailing_sl_r_mult = BALANCED_TIME_BASED_TRAILING_SL_R_MULT
+    elif market_mode == "CHOPPY":
+        time_based_trailing_after_sec = CHOPPY_TIME_BASED_TRAILING_AFTER_SEC
+        time_based_trailing_min_r_mult = CHOPPY_TIME_BASED_TRAILING_MIN_R_MULT
+        time_based_trailing_sl_r_mult = CHOPPY_TIME_BASED_TRAILING_SL_R_MULT
+    elif market_mode == "TOXIC":
+        time_based_trailing_after_sec = TOXIC_TIME_BASED_TRAILING_AFTER_SEC
+        time_based_trailing_min_r_mult = TOXIC_TIME_BASED_TRAILING_MIN_R_MULT
+        time_based_trailing_sl_r_mult = TOXIC_TIME_BASED_TRAILING_SL_R_MULT
+    elif market_mode == "QUIET":
+        time_based_trailing_after_sec = QUIET_TIME_BASED_TRAILING_AFTER_SEC
+        time_based_trailing_min_r_mult = QUIET_TIME_BASED_TRAILING_MIN_R_MULT
+        time_based_trailing_sl_r_mult = QUIET_TIME_BASED_TRAILING_SL_R_MULT
 
     signal_ttl = 180
     if market_mode == "TRENDING":
@@ -701,6 +750,10 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
                 "trailing_start_r_mult": trailing_start_r_mult,
                 "trailing_step_r_mult": trailing_step_r_mult,
                 "trailing_sl_r_mult": TRAILING_SL_R_MULT,
+                "time_based_enabled": TIME_BASED_TRAILING_ENABLED,
+                "time_based_after_sec": time_based_trailing_after_sec,
+                "time_based_min_r_mult": time_based_trailing_min_r_mult,
+                "time_based_sl_r_mult": time_based_trailing_sl_r_mult,
             },
         },
         "structure_reason": decision_meta.get("recent_structure"),
@@ -1924,6 +1977,9 @@ def _build_bridge_contract(data: dict):
         "trailing_start_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_start_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
         "trailing_step_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_step_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
         "trailing_sl_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_sl_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
+        "time_based_trailing_after_sec": (((data.get("market_context") or {}).get("trailing") or {}).get("time_based_after_sec") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
+        "time_based_trailing_min_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("time_based_min_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
+        "time_based_trailing_sl_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("time_based_sl_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
         "trailing_enabled": bool((((data.get("market_context") or {}).get("trailing") or {}).get("enabled")) if isinstance((data.get("market_context") or {}).get("trailing"), dict) else False),
     }
 

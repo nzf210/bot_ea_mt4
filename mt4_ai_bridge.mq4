@@ -17,6 +17,10 @@ extern double BreakEvenBufferRMultInput = 0.12;
 extern double TrailingStartRMultInput = 1.2;
 extern double TrailingStepRMultInput = 0.4;
 extern double TrailingSlRMultInput = 0.85;
+extern bool TimeBasedTrailingEnabledInput = true;
+extern int TimeBasedTrailingAfterSecInput = 600;
+extern double TimeBasedTrailingMinRMultInput = 0.25;
+extern double TimeBasedTrailingSlRMultInput = 0.18;
 
 string lastSignalId = "";
 datetime lastProcessedAt = 0;
@@ -32,6 +36,10 @@ double lastTrailingStartRMult = 1.5;
 double lastTrailingStepRMult = 0.5;
 double lastTrailingSlRMult = 1.0;
 bool lastTrailingEnabled = true;
+bool lastTimeBasedTrailingEnabled = true;
+int lastTimeBasedTrailingAfterSec = 600;
+double lastTimeBasedTrailingMinRMult = 0.25;
+double lastTimeBasedTrailingSlRMult = 0.18;
 bool lastBreakEvenActivated = false;
 bool lastTrailingActivated = false;
 datetime lastSignalTimestamp = 0;
@@ -118,6 +126,10 @@ void SaveTradeState()
    GlobalVariableSet(PersistKey("trail_step"), lastTrailingStepRMult);
    GlobalVariableSet(PersistKey("trail_sl"), lastTrailingSlRMult);
    GlobalVariableSet(PersistKey("trail_enabled"), lastTrailingEnabled ? 1 : 0);
+   GlobalVariableSet(PersistKey("time_trail_enabled"), lastTimeBasedTrailingEnabled ? 1 : 0);
+   GlobalVariableSet(PersistKey("time_trail_after"), lastTimeBasedTrailingAfterSec);
+   GlobalVariableSet(PersistKey("time_trail_min_r"), lastTimeBasedTrailingMinRMult);
+   GlobalVariableSet(PersistKey("time_trail_sl_r"), lastTimeBasedTrailingSlRMult);
    GlobalVariableSet(PersistKey("be_active"), lastBreakEvenActivated ? 1 : 0);
    GlobalVariableSet(PersistKey("trail_active"), lastTrailingActivated ? 1 : 0);
 }
@@ -146,7 +158,7 @@ string LoadLastSignalId()
 
 void ClearTradeState()
 {
-   string keys[17] = {"ticket","risk","sl","tp1","last_sl","be_r","be_buf","trail_start","trail_step","trail_sl","trail_enabled","be_active","trail_active","last_signal_ts","last_processed_at","cooldown_until","last_signal_id_len"};
+   string keys[21] = {"ticket","risk","sl","tp1","last_sl","be_r","be_buf","trail_start","trail_step","trail_sl","trail_enabled","time_trail_enabled","time_trail_after","time_trail_min_r","time_trail_sl_r","be_active","trail_active","last_signal_ts","last_processed_at","cooldown_until","last_signal_id_len"};
    for(int i = 0; i < ArraySize(keys); i++)
       GlobalVariableDel(PersistKey(keys[i]));
    for(int j = 0; j < 64; j++)
@@ -188,6 +200,10 @@ void RestoreOpenTradeState()
       lastTrailingStepRMult = GlobalVariableCheck(PersistKey("trail_step")) ? GlobalVariableGet(PersistKey("trail_step")) : 0.5;
       lastTrailingSlRMult = GlobalVariableCheck(PersistKey("trail_sl")) ? GlobalVariableGet(PersistKey("trail_sl")) : 1.0;
       lastTrailingEnabled = GlobalVariableCheck(PersistKey("trail_enabled")) ? (GlobalVariableGet(PersistKey("trail_enabled")) > 0) : true;
+      lastTimeBasedTrailingEnabled = GlobalVariableCheck(PersistKey("time_trail_enabled")) ? (GlobalVariableGet(PersistKey("time_trail_enabled")) > 0) : TimeBasedTrailingEnabledInput;
+      lastTimeBasedTrailingAfterSec = GlobalVariableCheck(PersistKey("time_trail_after")) ? (int)GlobalVariableGet(PersistKey("time_trail_after")) : TimeBasedTrailingAfterSecInput;
+      lastTimeBasedTrailingMinRMult = GlobalVariableCheck(PersistKey("time_trail_min_r")) ? GlobalVariableGet(PersistKey("time_trail_min_r")) : TimeBasedTrailingMinRMultInput;
+      lastTimeBasedTrailingSlRMult = GlobalVariableCheck(PersistKey("time_trail_sl_r")) ? GlobalVariableGet(PersistKey("time_trail_sl_r")) : TimeBasedTrailingSlRMultInput;
       lastBreakEvenActivated = GlobalVariableCheck(PersistKey("be_active")) ? (GlobalVariableGet(PersistKey("be_active")) > 0) : false;
       lastTrailingActivated = GlobalVariableCheck(PersistKey("trail_active")) ? (GlobalVariableGet(PersistKey("trail_active")) > 0) : false;
       break;
@@ -258,6 +274,20 @@ void ManageOpenTrade()
       if((type == OP_BUY && trailSl > newSl) || (type == OP_SELL && (newSl == 0 || trailSl < newSl)))
       {
          newSl = trailSl;
+         shouldModify = true;
+         lastTrailingActivated = true;
+      }
+   }
+
+   int holdSec = (int)(TimeCurrent() - OrderOpenTime());
+   if(lastTrailingEnabled && lastTimeBasedTrailingEnabled && lastTimeBasedTrailingAfterSec > 0 && holdSec >= lastTimeBasedTrailingAfterSec && rMultiple >= lastTimeBasedTrailingMinRMult)
+   {
+      double timeTrailR = lastTimeBasedTrailingSlRMult;
+      if(timeTrailR < 0) timeTrailR = 0;
+      double timeTrailSl = (type == OP_BUY) ? (openPrice + (riskPrice * timeTrailR)) : (openPrice - (riskPrice * timeTrailR));
+      if((type == OP_BUY && timeTrailSl > newSl) || (type == OP_SELL && (newSl == 0 || timeTrailSl < newSl)))
+      {
+         newSl = timeTrailSl;
          shouldModify = true;
          lastTrailingActivated = true;
       }
@@ -430,6 +460,9 @@ void OnTick()
    double trailingStartRMult = JsonGetDouble(json, "trailing_start_r_mult");
    double trailingStepRMult = JsonGetDouble(json, "trailing_step_r_mult");
    double trailingSlRMult = JsonGetDouble(json, "trailing_sl_r_mult");
+   double timeBasedTrailingAfterSec = JsonGetDouble(json, "time_based_trailing_after_sec");
+   double timeBasedTrailingMinRMult = JsonGetDouble(json, "time_based_trailing_min_r_mult");
+   double timeBasedTrailingSlRMult = JsonGetDouble(json, "time_based_trailing_sl_r_mult");
    double trailingEnabledRaw = JsonGetDouble(json, "trailing_enabled");
    int maxAge = (int)JsonGetDouble(json, "max_signal_age_sec");
    if(maxAge <= 0) maxAge = MaxSignalAgeSec;
@@ -565,6 +598,10 @@ void OnTick()
       lastTrailingStepRMult = (trailingStepRMult > 0) ? trailingStepRMult : TrailingStepRMultInput;
       lastTrailingSlRMult = (trailingSlRMult > 0) ? trailingSlRMult : TrailingSlRMultInput;
       lastTrailingEnabled = (trailingEnabledRaw == 0) ? false : true;
+      lastTimeBasedTrailingEnabled = TimeBasedTrailingEnabledInput;
+      lastTimeBasedTrailingAfterSec = (timeBasedTrailingAfterSec > 0) ? (int)timeBasedTrailingAfterSec : TimeBasedTrailingAfterSecInput;
+      lastTimeBasedTrailingMinRMult = (timeBasedTrailingMinRMult >= 0) ? timeBasedTrailingMinRMult : TimeBasedTrailingMinRMultInput;
+      lastTimeBasedTrailingSlRMult = (timeBasedTrailingSlRMult >= 0) ? timeBasedTrailingSlRMult : TimeBasedTrailingSlRMultInput;
       SaveLastSignalId();
       SaveTradeState();
       Print("Trade opened for signal: ", signalId);
@@ -756,10 +793,13 @@ string FlattenSignalResponse(string response)
    double trailingStartRMult = JsonGetNestedDouble(response, "bridge_contract", "trailing_start_r_mult");
    double trailingStepRMult = JsonGetNestedDouble(response, "bridge_contract", "trailing_step_r_mult");
    double trailingSlRMult = JsonGetNestedDouble(response, "bridge_contract", "trailing_sl_r_mult");
+   double timeBasedTrailingAfterSec = JsonGetNestedDouble(response, "bridge_contract", "time_based_trailing_after_sec");
+   double timeBasedTrailingMinRMult = JsonGetNestedDouble(response, "bridge_contract", "time_based_trailing_min_r_mult");
+   double timeBasedTrailingSlRMult = JsonGetNestedDouble(response, "bridge_contract", "time_based_trailing_sl_r_mult");
    double trailingEnabled = JsonGetNestedDouble(response, "bridge_contract", "trailing_enabled");
 
    string timestampUtc = JsonGetNestedString(response, "bridge_contract", "timestamp_utc");
-   return StringFormat("{\"signal_id\":\"%s\",\"symbol\":\"%s\",\"side\":\"%s\",\"timestamp_utc\":\"%s\",\"stop_loss\":%G,\"entry_zone_min\":%G,\"entry_zone_max\":%G,\"tp1_price\":%G,\"max_signal_age_sec\":%G,\"break_even_r_mult\":%G,\"break_even_buffer_r_mult\":%G,\"trailing_start_r_mult\":%G,\"trailing_step_r_mult\":%G,\"trailing_sl_r_mult\":%G,\"trailing_enabled\":%G}", signalId, symbol, side, timestampUtc, stopLoss, entryMin, entryMax, tp1, maxAge, breakEvenRMult, breakEvenBufferRMult, trailingStartRMult, trailingStepRMult, trailingSlRMult, trailingEnabled);
+   return StringFormat("{\"signal_id\":\"%s\",\"symbol\":\"%s\",\"side\":\"%s\",\"timestamp_utc\":\"%s\",\"stop_loss\":%G,\"entry_zone_min\":%G,\"entry_zone_max\":%G,\"tp1_price\":%G,\"max_signal_age_sec\":%G,\"break_even_r_mult\":%G,\"break_even_buffer_r_mult\":%G,\"trailing_start_r_mult\":%G,\"trailing_step_r_mult\":%G,\"trailing_sl_r_mult\":%G,\"time_based_trailing_after_sec\":%G,\"time_based_trailing_min_r_mult\":%G,\"time_based_trailing_sl_r_mult\":%G,\"trailing_enabled\":%G}", signalId, symbol, side, timestampUtc, stopLoss, entryMin, entryMax, tp1, maxAge, breakEvenRMult, breakEvenBufferRMult, trailingStartRMult, trailingStepRMult, trailingSlRMult, timeBasedTrailingAfterSec, timeBasedTrailingMinRMult, timeBasedTrailingSlRMult, trailingEnabled);
 }
 
 string JsonGetString(string json, string key)
