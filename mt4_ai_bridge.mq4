@@ -17,6 +17,11 @@ extern double BreakEvenBufferRMultInput = 0.12;
 extern double TrailingStartRMultInput = 1.2;
 extern double TrailingStepRMultInput = 0.4;
 extern double TrailingSlRMultInput = 0.85;
+extern bool ProfitProtectionEnabledInput = true;
+extern double ProfitProtectionStage1RMultInput = 0.8;
+extern double ProfitProtectionStage1LockRMultInput = 0.2;
+extern double ProfitProtectionStage2RMultInput = 1.2;
+extern double ProfitProtectionStage2LockRMultInput = 0.5;
 extern bool TimeBasedTrailingEnabledInput = true;
 extern int TimeBasedTrailingAfterSecInput = 600;
 extern double TimeBasedTrailingMinRMultInput = 0.25;
@@ -262,6 +267,30 @@ void ManageOpenTrade()
          newSl = beSl;
          shouldModify = true;
          lastBreakEvenActivated = true;
+      }
+   }
+
+   if(ProfitProtectionEnabledInput)
+   {
+      if(rMultiple >= ProfitProtectionStage1RMultInput)
+      {
+         double stage1Sl = (type == OP_BUY) ? (openPrice + (riskPrice * ProfitProtectionStage1LockRMultInput)) : (openPrice - (riskPrice * ProfitProtectionStage1LockRMultInput));
+         if((type == OP_BUY && stage1Sl > newSl) || (type == OP_SELL && (newSl == 0 || stage1Sl < newSl)))
+         {
+            newSl = stage1Sl;
+            shouldModify = true;
+            lastTrailingActivated = true;
+         }
+      }
+      if(rMultiple >= ProfitProtectionStage2RMultInput)
+      {
+         double stage2Sl = (type == OP_BUY) ? (openPrice + (riskPrice * ProfitProtectionStage2LockRMultInput)) : (openPrice - (riskPrice * ProfitProtectionStage2LockRMultInput));
+         if((type == OP_BUY && stage2Sl > newSl) || (type == OP_SELL && (newSl == 0 || stage2Sl < newSl)))
+         {
+            newSl = stage2Sl;
+            shouldModify = true;
+            lastTrailingActivated = true;
+         }
       }
    }
 
