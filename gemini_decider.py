@@ -87,6 +87,9 @@ MARKET_MODE_QUIET_RANGE_FACTOR = float(os.getenv("MARKET_MODE_QUIET_RANGE_FACTOR
 MARKET_MODE_TOXIC_SPREAD_FACTOR = float(os.getenv("MARKET_MODE_TOXIC_SPREAD_FACTOR", "0.75"))
 MARKET_MODE_TRENDING_ALIGNMENT_MIN = int(os.getenv("MARKET_MODE_TRENDING_ALIGNMENT_MIN", "4"))
 MARKET_MODE_THRESHOLD_BONUS_MAX = float(os.getenv("MARKET_MODE_THRESHOLD_BONUS_MAX", "0.05"))
+MARKET_MODE_TRENDING_LATE_ENTRY_BONUS = float(os.getenv("MARKET_MODE_TRENDING_LATE_ENTRY_BONUS", "0.08"))
+MARKET_MODE_TRENDING_THRESHOLD_BONUS = float(os.getenv("MARKET_MODE_TRENDING_THRESHOLD_BONUS", "0.015"))
+MARKET_MODE_TRENDING_B_TIER_MAX_PENALTIES = int(os.getenv("MARKET_MODE_TRENDING_B_TIER_MAX_PENALTIES", "2"))
 GEMINI_RUNTIME_STATE = {
     "enabled": GEMINI_ENABLED,
     "model": GEMINI_MODEL,
@@ -284,10 +287,15 @@ def _trend_regime_gate(snapshot: dict, bias: str):
 
     soft_penalty = 0.0
     soft_reason = None
+    market_mode = _market_mode(snapshot)
+    trending_soft_allow = market_mode.get("mode") == "TRENDING" and aligned_count >= max(TREND_REGIME_SOFT_ALIGNMENT_ALLOWED - 1, 1) and regime_score >= max(TREND_REGIME_SCORE_MIN - 0.18, 0.0)
     if aligned_count < TREND_REGIME_ALIGNMENT_MIN:
         if aligned_count >= TREND_REGIME_SOFT_ALIGNMENT_ALLOWED and regime_score >= max(TREND_REGIME_SCORE_MIN - 0.14, 0.0):
             soft_penalty = TREND_REGIME_SOFT_ALIGNMENT_PENALTY
             soft_reason = f"trend_regime_alignment_soft:{aligned_count}/5"
+        elif trending_soft_allow:
+            soft_penalty = max(TREND_REGIME_SOFT_ALIGNMENT_PENALTY * 0.75, 0.01)
+            soft_reason = f"trend_regime_alignment_trending_soft:{aligned_count}/5"
         else:
             return {"pass": False, "reason": f"trend_regime_alignment_weak:{aligned_count}/5", "score": round(regime_score, 4), "aligned_count": aligned_count, "opposing_count": opposing_count}
     if strong_aligned < 2:
@@ -728,8 +736,11 @@ def prefilter(snapshot: dict):
     else:
         late_distance = max(high - entry, 0.0)
     late_ratio = late_distance / candle_range
-    if late_ratio >= LATE_ENTRY_RANGE_FACTOR:
-        return {"pass": False, "reason": f"late_entry:{late_ratio:.2f}"}
+    late_entry_limit = LATE_ENTRY_RANGE_FACTOR
+    if market_mode.get("mode") == "TRENDING" and float(trend_regime.get("score") or 0.0) >= 0.72:
+        late_entry_limit += MARKET_MODE_TRENDING_LATE_ENTRY_BONUS
+    if late_ratio >= late_entry_limit:
+        return {"pass": False, "reason": f"late_entry:{late_ratio:.2f}>={late_entry_limit:.2f}"}
     if bias == "BUY" and close_to_high_ratio <= NO_CHASE_CLOSE_EXTREME_RATIO:
         return {"pass": False, "reason": f"no_chase_buy:close_to_high={close_to_high_ratio:.2f}"}
     if bias == "SELL" and close_to_low_ratio <= NO_CHASE_CLOSE_EXTREME_RATIO:
@@ -759,6 +770,7 @@ def prefilter(snapshot: dict):
         "market_mode_confidence_penalty": market_mode.get("confidence_penalty"),
         "spread_quality": round(spread_quality, 4),
         "late_ratio": round(late_ratio, 4),
+        "late_entry_limit": round(late_entry_limit, 4),
         "body_ratio": round(body_ratio, 4),
         "close_to_high_ratio": round(close_to_high_ratio, 4),
         "close_to_low_ratio": round(close_to_low_ratio, 4),
@@ -970,6 +982,10 @@ def _adaptive_thresholds(pf: dict):
         penalty += 0.03
     elif trend_regime_score > 0.78:
         bonus += 0.005
+
+    market_mode = str(pf.get("market_mode") or "UNKNOWN").upper()
+    if market_mode == "TRENDING" and trend_regime_score >= 0.78 and float(pf.get("market_toxicity_score") or 0.0) <= 0.25:
+        bonus += MARKET_MODE_TRENDING_THRESHOLD_BONUS
     if trend_regime_alignment < 3:
         penalty += 0.02
     elif trend_regime_alignment >= 4:
@@ -1002,7 +1018,12 @@ def _quality_tier(score: float, pf: dict):
     penalty_count = len([1 for key in ["outcome_penalty", "market_toxicity_penalty", "pattern_lockout_penalty", "journal_reason_penalty", "session_penalty", "exit_reason_penalty"] if float(pf.get(key) or 0.0) > 0.0])
     if score >= QUALITY_TIER_A_MIN and penalty_count <= 1:
         return {"tier": "A", "label": "high_quality", "penalty_count": penalty_count}
+    market_mode = str(pf.get("market_mode") or "UNKNOWN").upper()
+    trend_regime_score = float(pf.get("trend_regime_score") or 0.0)
+    market_toxicity_score = float(pf.get("market_toxicity_score") or 0.0)
     if score >= QUALITY_TIER_B_MIN and penalty_count <= 3:
+        if market_mode == "TRENDING" and trend_regime_score >= 0.78 and market_toxicity_score <= 0.25 and penalty_count <= MARKET_MODE_TRENDING_B_TIER_MAX_PENALTIES:
+            return {"tier": "B", "label": "acceptable_quality_trending", "penalty_count": penalty_count}
         return {"tier": "B", "label": "acceptable_quality", "penalty_count": penalty_count}
     return {"tier": "C", "label": "fragile_quality", "penalty_count": penalty_count}
 
