@@ -10,6 +10,13 @@ extern int Slippage = 20;
 extern int MagicNumber = 20260421;
 extern bool EnableTrading = true;
 extern bool DebugLogging = true;
+extern double EntryZoneExecutionBufferRatio = 0.20;
+extern double ExtremeEntryBlockRatio = 0.15;
+extern double BreakEvenRMultInput = 0.85;
+extern double BreakEvenBufferRMultInput = 0.12;
+extern double TrailingStartRMultInput = 1.2;
+extern double TrailingStepRMultInput = 0.4;
+extern double TrailingSlRMultInput = 0.85;
 
 string lastSignalId = "";
 datetime lastProcessedAt = 0;
@@ -444,17 +451,20 @@ void OnTick()
       if(signalAge < 0)
       {
          DebugPrint("skip: signal timestamp is in the future age=" + IntegerToString(signalAge) + " raw=" + timestampUtc + " gmt_now=" + TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+         SendExecutionReject(signalId, symbol, side, "future_signal_timestamp", 0, 0, 0);
          return;
       }
       if(signalAge > maxAge)
       {
          DebugPrint("skip: stale signal age=" + IntegerToString(signalAge) + " max=" + IntegerToString(maxAge) + " raw=" + timestampUtc + " gmt_now=" + TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+         SendExecutionReject(signalId, symbol, side, "stale_signal", 0, 0, 0);
          return;
       }
    }
    if(signalId == lastSignalId)
    {
       DebugPrint("skip: signal already processed " + signalId);
+      SendExecutionReject(signalId, symbol, side, "signal_already_processed", 0, 0, 0);
       return;
    }
    if(lastSignalTimestamp > 0 && signalTs > 0 && signalTs <= lastSignalTimestamp)
@@ -465,6 +475,7 @@ void OnTick()
    if(NormalizeBridgeSymbol(symbol) != NormalizeBridgeSymbol(Symbol()))
    {
       DebugPrint("skip: symbol mismatch signal=" + symbol + " chart=" + Symbol());
+      SendExecutionReject(signalId, symbol, side, "symbol_mismatch", 0, 0, 0);
       return;
    }
 
@@ -472,6 +483,7 @@ void OnTick()
    if(spread > MaxSpreadPoints)
    {
       DebugPrint("skip: spread too high current=" + IntegerToString(spread) + " max=" + IntegerToString(MaxSpreadPoints));
+      SendExecutionReject(signalId, symbol, side, "spread_too_high", (side == "BUY") ? Ask : Bid, 0, 0);
       return;
    }
 
@@ -479,6 +491,41 @@ void OnTick()
    if(price < entryMin || price > entryMax)
    {
       DebugPrint("skip: price outside entry zone price=" + DoubleToString(price, Digits) + " min=" + DoubleToString(entryMin, Digits) + " max=" + DoubleToString(entryMax, Digits));
+      SendExecutionReject(signalId, symbol, side, "price_outside_entry_zone", price, entryMin, entryMax);
+      return;
+   }
+
+   double zoneWidth = entryMax - entryMin;
+   if(zoneWidth <= 0)
+   {
+      DebugPrint("skip: invalid entry zone width");
+      SendExecutionReject(signalId, symbol, side, "invalid_entry_zone_width", price, entryMin, entryMax);
+      return;
+   }
+   double zoneBuffer = zoneWidth * EntryZoneExecutionBufferRatio;
+   double effectiveMin = entryMin + zoneBuffer;
+   double effectiveMax = entryMax - zoneBuffer;
+   if(effectiveMin >= effectiveMax)
+   {
+      effectiveMin = entryMin;
+      effectiveMax = entryMax;
+   }
+   if(price < effectiveMin || price > effectiveMax)
+   {
+      DebugPrint("skip: price too close to zone edge price=" + DoubleToString(price, Digits) + " eff_min=" + DoubleToString(effectiveMin, Digits) + " eff_max=" + DoubleToString(effectiveMax, Digits));
+      SendExecutionReject(signalId, symbol, side, "price_too_close_to_zone_edge", price, effectiveMin, effectiveMax);
+      return;
+   }
+
+   double edgeRatio = 0.5;
+   if(side == "BUY")
+      edgeRatio = (entryMax - price) / zoneWidth;
+   else if(side == "SELL")
+      edgeRatio = (price - entryMin) / zoneWidth;
+   if(edgeRatio <= ExtremeEntryBlockRatio)
+   {
+      DebugPrint("skip: extreme edge entry blocked ratio=" + DoubleToString(edgeRatio, 2));
+      SendExecutionReject(signalId, symbol, side, "extreme_edge_entry_blocked", price, entryMin, entryMax);
       return;
    }
 
@@ -512,11 +559,11 @@ void OnTick()
       lastLastAppliedStopLoss = stopLoss;
       lastBreakEvenActivated = false;
       lastTrailingActivated = false;
-      lastBreakEvenRMult = (breakEvenRMult > 0) ? breakEvenRMult : 1.0;
-      lastBreakEvenBufferRMult = (breakEvenBufferRMult >= 0) ? breakEvenBufferRMult : 0.08;
-      lastTrailingStartRMult = (trailingStartRMult > 0) ? trailingStartRMult : 1.5;
-      lastTrailingStepRMult = (trailingStepRMult > 0) ? trailingStepRMult : 0.5;
-      lastTrailingSlRMult = (trailingSlRMult > 0) ? trailingSlRMult : 1.0;
+      lastBreakEvenRMult = (breakEvenRMult > 0) ? breakEvenRMult : BreakEvenRMultInput;
+      lastBreakEvenBufferRMult = (breakEvenBufferRMult >= 0) ? breakEvenBufferRMult : BreakEvenBufferRMultInput;
+      lastTrailingStartRMult = (trailingStartRMult > 0) ? trailingStartRMult : TrailingStartRMultInput;
+      lastTrailingStepRMult = (trailingStepRMult > 0) ? trailingStepRMult : TrailingStepRMultInput;
+      lastTrailingSlRMult = (trailingSlRMult > 0) ? trailingSlRMult : TrailingSlRMultInput;
       lastTrailingEnabled = (trailingEnabledRaw == 0) ? false : true;
       SaveLastSignalId();
       SaveTradeState();
@@ -552,7 +599,43 @@ void SendExecutionReport(string signalId, int ticket, string type, double lot, d
    char result[];
    string resultHeaders;
    StringToCharArray(body, data);
-   WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+   int code = WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+   string response = CharArrayToString(result);
+   if(code == -1)
+   {
+      Print("Execution report failed: ", GetLastError(), " type=", type, " signal=", signalId, " url=", url);
+      return;
+   }
+   if(code < 200 || code >= 300)
+   {
+      Print("Execution report rejected code=", code, " type=", type, " signal=", signalId, " response=", response);
+      return;
+   }
+   DebugPrint("execution report ok type=" + type + " signal=" + signalId + " code=" + IntegerToString(code));
+}
+
+void SendExecutionReject(string signalId, string symbol, string side, string reason, double price, double entryMin, double entryMax)
+{
+   string url = BridgeBaseUrl + "/execution/reject";
+   string headers = "Authorization: Bearer " + BridgeToken + "\r\nContent-Type: application/json\r\n";
+   string body = StringFormat("{\"signal_id\":\"%s\",\"symbol\":\"%s\",\"side\":\"%s\",\"reason\":\"%s\",\"price\":%G,\"entry_zone_min\":%G,\"entry_zone_max\":%G}", signalId, symbol, side, reason, price, entryMin, entryMax);
+   char data[];
+   char result[];
+   string resultHeaders;
+   StringToCharArray(body, data);
+   int code = WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+   string response = CharArrayToString(result);
+   if(code == -1)
+   {
+      Print("Execution reject report failed: ", GetLastError(), " signal=", signalId, " reason=", reason);
+      return;
+   }
+   if(code < 200 || code >= 300)
+   {
+      Print("Execution reject report rejected code=", code, " signal=", signalId, " reason=", reason, " response=", response);
+      return;
+   }
+   DebugPrint("execution reject report ok signal=" + signalId + " reason=" + reason + " code=" + IntegerToString(code));
 }
 
 void SendExecutionCloseReport(string signalId, int ticket, double lot, double price, string outcome, double pnl, string exitReason)
@@ -564,7 +647,19 @@ void SendExecutionCloseReport(string signalId, int ticket, double lot, double pr
    char result[];
    string resultHeaders;
    StringToCharArray(body, data);
-   WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+   int code = WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+   string response = CharArrayToString(result);
+   if(code == -1)
+   {
+      Print("Execution close report failed: ", GetLastError(), " signal=", signalId, " url=", url);
+      return;
+   }
+   if(code < 200 || code >= 300)
+   {
+      Print("Execution close report rejected code=", code, " signal=", signalId, " response=", response);
+      return;
+   }
+   DebugPrint("execution close report ok signal=" + signalId + " code=" + IntegerToString(code));
 }
 
 bool IsTicketStillOpen(int ticket)

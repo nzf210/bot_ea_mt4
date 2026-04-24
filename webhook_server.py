@@ -53,12 +53,12 @@ REVERSAL_ON_OPEN_POSITION = os.getenv("REVERSAL_ON_OPEN_POSITION", "false").lowe
 POST_CLOSE_COOLDOWN_SEC = int(os.getenv("POST_CLOSE_COOLDOWN_SEC", "30"))
 LOSS_COOLDOWN_SEC = int(os.getenv("LOSS_COOLDOWN_SEC", "180"))
 MAX_CONSECUTIVE_LOSSES_PER_SIDE = int(os.getenv("MAX_CONSECUTIVE_LOSSES_PER_SIDE", "2"))
-XAU_ENTRY_ZONE_MIN = float(os.getenv("XAU_ENTRY_ZONE_MIN", "0.5"))
-XAU_ENTRY_ZONE_MAX = float(os.getenv("XAU_ENTRY_ZONE_MAX", "1.5"))
-XAU_ENTRY_ZONE_RANGE_MULT = float(os.getenv("XAU_ENTRY_ZONE_RANGE_MULT", "0.35"))
-XAU_SL_MIN = float(os.getenv("XAU_SL_MIN", "4.0"))
-XAU_SL_MAX = float(os.getenv("XAU_SL_MAX", "9.0"))
-XAU_SL_RANGE_MULT = float(os.getenv("XAU_SL_RANGE_MULT", "2.8"))
+XAU_ENTRY_ZONE_MIN = float(os.getenv("XAU_ENTRY_ZONE_MIN", "0.35"))
+XAU_ENTRY_ZONE_MAX = float(os.getenv("XAU_ENTRY_ZONE_MAX", "0.9"))
+XAU_ENTRY_ZONE_RANGE_MULT = float(os.getenv("XAU_ENTRY_ZONE_RANGE_MULT", "0.22"))
+XAU_SL_MIN = float(os.getenv("XAU_SL_MIN", "4.8"))
+XAU_SL_MAX = float(os.getenv("XAU_SL_MAX", "10.5"))
+XAU_SL_RANGE_MULT = float(os.getenv("XAU_SL_RANGE_MULT", "3.1"))
 XAU_TP1_MIN = float(os.getenv("XAU_TP1_MIN", "6.0"))
 XAU_TP1_RANGE_MULT = float(os.getenv("XAU_TP1_RANGE_MULT", "3.8"))
 XAU_TP2_MIN = float(os.getenv("XAU_TP2_MIN", "10.0"))
@@ -77,11 +77,11 @@ NEWS_URL = os.getenv("NEWS_CALENDAR_URL", "https://nfs.faireconomy.media/ff_cale
 NEWS_REFRESH_SEC = int(os.getenv("NEWS_REFRESH_SEC", "3600"))
 DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
 TRAILING_ENABLED = os.getenv("TRAILING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
-BREAK_EVEN_R_MULT = float(os.getenv("BREAK_EVEN_R_MULT", "1.0"))
-BREAK_EVEN_BUFFER_R_MULT = float(os.getenv("BREAK_EVEN_BUFFER_R_MULT", "0.08"))
-TRAILING_START_R_MULT = float(os.getenv("TRAILING_START_R_MULT", "1.5"))
-TRAILING_STEP_R_MULT = float(os.getenv("TRAILING_STEP_R_MULT", "0.5"))
-TRAILING_SL_R_MULT = float(os.getenv("TRAILING_SL_R_MULT", "1.0"))
+BREAK_EVEN_R_MULT = float(os.getenv("BREAK_EVEN_R_MULT", "0.85"))
+BREAK_EVEN_BUFFER_R_MULT = float(os.getenv("BREAK_EVEN_BUFFER_R_MULT", "0.12"))
+TRAILING_START_R_MULT = float(os.getenv("TRAILING_START_R_MULT", "1.2"))
+TRAILING_STEP_R_MULT = float(os.getenv("TRAILING_STEP_R_MULT", "0.4"))
+TRAILING_SL_R_MULT = float(os.getenv("TRAILING_SL_R_MULT", "0.85"))
 SLIPPAGE_COOLDOWN_ENABLED = os.getenv("SLIPPAGE_COOLDOWN_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 SLIPPAGE_COOLDOWN_WINDOW_SEC = int(os.getenv("SLIPPAGE_COOLDOWN_WINDOW_SEC", "10800"))
 SLIPPAGE_COOLDOWN_THRESHOLD = int(os.getenv("SLIPPAGE_COOLDOWN_THRESHOLD", "2"))
@@ -91,12 +91,12 @@ SESSION_BUCKET_COOLDOWN_THRESHOLD = int(os.getenv("SESSION_BUCKET_COOLDOWN_THRES
 SESSION_BUCKET_COOLDOWN_SEC = int(os.getenv("SESSION_BUCKET_COOLDOWN_SEC", "5400"))
 LOCAL_ONLY_MODE = os.getenv("LOCAL_ONLY_MODE", "true").lower() in {"1", "true", "yes", "on"}
 ADAPTIVE_TRAILING_ENABLED = os.getenv("ADAPTIVE_TRAILING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
-ASIA_TRAILING_START_R_MULT = float(os.getenv("ASIA_TRAILING_START_R_MULT", "1.8"))
-ASIA_TRAILING_STEP_R_MULT = float(os.getenv("ASIA_TRAILING_STEP_R_MULT", "0.6"))
-LONDON_TRAILING_START_R_MULT = float(os.getenv("LONDON_TRAILING_START_R_MULT", "1.4"))
-LONDON_TRAILING_STEP_R_MULT = float(os.getenv("LONDON_TRAILING_STEP_R_MULT", "0.45"))
-NY_TRAILING_START_R_MULT = float(os.getenv("NY_TRAILING_START_R_MULT", "1.3"))
-NY_TRAILING_STEP_R_MULT = float(os.getenv("NY_TRAILING_STEP_R_MULT", "0.4"))
+ASIA_TRAILING_START_R_MULT = float(os.getenv("ASIA_TRAILING_START_R_MULT", "1.5"))
+ASIA_TRAILING_STEP_R_MULT = float(os.getenv("ASIA_TRAILING_STEP_R_MULT", "0.5"))
+LONDON_TRAILING_START_R_MULT = float(os.getenv("LONDON_TRAILING_START_R_MULT", "1.15"))
+LONDON_TRAILING_STEP_R_MULT = float(os.getenv("LONDON_TRAILING_STEP_R_MULT", "0.35"))
+NY_TRAILING_START_R_MULT = float(os.getenv("NY_TRAILING_START_R_MULT", "1.05"))
+NY_TRAILING_STEP_R_MULT = float(os.getenv("NY_TRAILING_STEP_R_MULT", "0.3"))
 ADAPTIVE_ENTRY_ZONE_ENABLED = os.getenv("ADAPTIVE_ENTRY_ZONE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 ASIA_ENTRY_ZONE_MULT = float(os.getenv("ASIA_ENTRY_ZONE_MULT", "0.85"))
 LONDON_ENTRY_ZONE_MULT = float(os.getenv("LONDON_ENTRY_ZONE_MULT", "1.0"))
@@ -571,6 +571,10 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
 
     if symbol == "XAUUSD":
         zone = _clamp(candle_range * XAU_ENTRY_ZONE_RANGE_MULT * session_zone_mult, XAU_ENTRY_ZONE_MIN, XAU_ENTRY_ZONE_MAX)
+        if market_mode == "TRENDING":
+            zone *= 0.92
+        elif market_mode in {"CHOPPY", "TOXIC"}:
+            zone *= 0.8
         sl_offset = _clamp(max(XAU_SL_MIN, candle_range * XAU_SL_RANGE_MULT), XAU_SL_MIN, XAU_SL_MAX) * conservative_factor * geometry_sl_mult
         tp1_offset = max(XAU_TP1_MIN, candle_range * XAU_TP1_RANGE_MULT) * geometry_tp_mult
         tp2_offset = max(XAU_TP2_MIN, candle_range * XAU_TP2_RANGE_MULT) * geometry_tp_mult
@@ -1975,6 +1979,20 @@ def contract_status(authorization: Optional[str] = Header(default=None)):
         "trailing_enabled": bridge_contract.get("trailing_enabled"),
     }
     return {"ok": True, "signal_present": True, "status": data.get("status"), "news_blocked": news_blocked, "active_news": active_news, "bridge_contract": bridge_contract, "validation": validation}
+
+
+@app.post("/execution/reject")
+def execution_reject(payload: dict, authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    event = dict(payload)
+    event["type"] = "execution_reject"
+    event["at"] = datetime.now(timezone.utc).isoformat()
+    _append_journal(event)
+    SNAPSHOT_STATE["last_no_trade_at"] = event["at"]
+    SNAPSHOT_STATE["last_no_trade_reason"] = payload.get("reason")
+    SNAPSHOT_STATE["last_no_trade_symbol"] = payload.get("symbol")
+    _save_runtime_state()
+    return {"ok": True}
 
 
 @app.post("/execution/report")
