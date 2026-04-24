@@ -627,25 +627,38 @@ int CountCurrentOrders()
    return count;
 }
 
+string JsonEscape(string value)
+{
+   string escaped = value;
+   StringReplace(escaped, "\\", "\\\\");
+   StringReplace(escaped, "\"", "\\\"");
+   StringReplace(escaped, "\r", " ");
+   StringReplace(escaped, "\n", " ");
+   StringReplace(escaped, "\t", " ");
+   return escaped;
+}
+
 void SendExecutionReport(string signalId, int ticket, string type, double lot, double price)
 {
+   string safeSignalId = JsonEscape(signalId);
+   string safeType = JsonEscape(type);
    string url = BridgeBaseUrl + "/execution/report";
    string headers = "Authorization: Bearer " + BridgeToken + "\r\nContent-Type: application/json\r\n";
-   string body = StringFormat("{\"signal_id\":\"%s\",\"ticket\":%d,\"type\":\"%s\",\"lot\":%G,\"price\":%G}", signalId, ticket, type, lot, price);
+   string body = StringFormat("{\"signal_id\":\"%s\",\"ticket\":%d,\"type\":\"%s\",\"lot\":%G,\"price\":%G}", safeSignalId, ticket, safeType, lot, price);
    char data[];
    char result[];
    string resultHeaders;
-   StringToCharArray(body, data);
+   StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
    int code = WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
    string response = CharArrayToString(result);
    if(code == -1)
    {
-      Print("Execution report failed: ", GetLastError(), " type=", type, " signal=", signalId, " url=", url);
+      Print("Execution report failed: ", GetLastError(), " type=", type, " signal=", signalId, " url=", url, " body=", body);
       return;
    }
    if(code < 200 || code >= 300)
    {
-      Print("Execution report rejected code=", code, " type=", type, " signal=", signalId, " response=", response);
+      Print("Execution report rejected code=", code, " type=", type, " signal=", signalId, " body=", body, " response=", response);
       return;
    }
    DebugPrint("execution report ok type=" + type + " signal=" + signalId + " code=" + IntegerToString(code));
@@ -653,23 +666,27 @@ void SendExecutionReport(string signalId, int ticket, string type, double lot, d
 
 void SendExecutionReject(string signalId, string symbol, string side, string reason, double price, double entryMin, double entryMax)
 {
+   string safeSignalId = JsonEscape(signalId);
+   string safeSymbol = JsonEscape(symbol);
+   string safeSide = JsonEscape(side);
+   string safeReason = JsonEscape(reason);
    string url = BridgeBaseUrl + "/execution/reject";
    string headers = "Authorization: Bearer " + BridgeToken + "\r\nContent-Type: application/json\r\n";
-   string body = StringFormat("{\"signal_id\":\"%s\",\"symbol\":\"%s\",\"side\":\"%s\",\"reason\":\"%s\",\"price\":%G,\"entry_zone_min\":%G,\"entry_zone_max\":%G}", signalId, symbol, side, reason, price, entryMin, entryMax);
+   string body = StringFormat("{\"signal_id\":\"%s\",\"symbol\":\"%s\",\"side\":\"%s\",\"reason\":\"%s\",\"price\":%G,\"entry_zone_min\":%G,\"entry_zone_max\":%G}", safeSignalId, safeSymbol, safeSide, safeReason, price, entryMin, entryMax);
    char data[];
    char result[];
    string resultHeaders;
-   StringToCharArray(body, data);
+   StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
    int code = WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
    string response = CharArrayToString(result);
    if(code == -1)
    {
-      Print("Execution reject report failed: ", GetLastError(), " signal=", signalId, " reason=", reason);
+      Print("Execution reject report failed: ", GetLastError(), " signal=", signalId, " reason=", reason, " body=", body);
       return;
    }
    if(code < 200 || code >= 300)
    {
-      Print("Execution reject report rejected code=", code, " signal=", signalId, " reason=", reason, " response=", response);
+      Print("Execution reject report rejected code=", code, " signal=", signalId, " reason=", reason, " body=", body, " response=", response);
       return;
    }
    DebugPrint("execution reject report ok signal=" + signalId + " reason=" + reason + " code=" + IntegerToString(code));
@@ -677,23 +694,26 @@ void SendExecutionReject(string signalId, string symbol, string side, string rea
 
 void SendExecutionCloseReport(string signalId, int ticket, double lot, double price, string outcome, double pnl, string exitReason)
 {
+   string safeSignalId = JsonEscape(signalId);
+   string safeOutcome = JsonEscape(outcome);
+   string safeExitReason = JsonEscape(exitReason);
    string url = BridgeBaseUrl + "/execution/report";
    string headers = "Authorization: Bearer " + BridgeToken + "\r\nContent-Type: application/json\r\n";
-   string body = StringFormat("{\"signal_id\":\"%s\",\"ticket\":%d,\"type\":\"CLOSE\",\"lot\":%G,\"price\":%G,\"outcome\":\"%s\",\"pnl\":%G,\"exit_reason\":\"%s\",\"initial_risk_price\":%G,\"initial_stop_loss\":%G,\"initial_tp1\":%G,\"last_applied_stop_loss\":%G,\"break_even_activated\":%s,\"trailing_activated\":%s}", signalId, ticket, lot, price, outcome, pnl, exitReason, lastOpenInitialRiskPrice, lastOpenInitialStopLoss, lastOpenInitialTp1, lastLastAppliedStopLoss, lastBreakEvenActivated ? "true" : "false", lastTrailingActivated ? "true" : "false");
+   string body = StringFormat("{\"signal_id\":\"%s\",\"ticket\":%d,\"type\":\"CLOSE\",\"lot\":%G,\"price\":%G,\"outcome\":\"%s\",\"pnl\":%G,\"exit_reason\":\"%s\",\"initial_risk_price\":%G,\"initial_stop_loss\":%G,\"initial_tp1\":%G,\"last_applied_stop_loss\":%G,\"break_even_activated\":%s,\"trailing_activated\":%s}", safeSignalId, ticket, lot, price, safeOutcome, pnl, safeExitReason, lastOpenInitialRiskPrice, lastOpenInitialStopLoss, lastOpenInitialTp1, lastLastAppliedStopLoss, lastBreakEvenActivated ? "true" : "false", lastTrailingActivated ? "true" : "false");
    char data[];
    char result[];
    string resultHeaders;
-   StringToCharArray(body, data);
+   StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
    int code = WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
    string response = CharArrayToString(result);
    if(code == -1)
    {
-      Print("Execution close report failed: ", GetLastError(), " signal=", signalId, " url=", url);
+      Print("Execution close report failed: ", GetLastError(), " signal=", signalId, " url=", url, " body=", body);
       return;
    }
    if(code < 200 || code >= 300)
    {
-      Print("Execution close report rejected code=", code, " signal=", signalId, " response=", response);
+      Print("Execution close report rejected code=", code, " signal=", signalId, " body=", body, " response=", response);
       return;
    }
    DebugPrint("execution close report ok signal=" + signalId + " code=" + IntegerToString(code));
