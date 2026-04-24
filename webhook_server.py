@@ -2151,6 +2151,21 @@ def execution_reject(payload: dict, authorization: Optional[str] = Header(defaul
     return {"ok": True}
 
 
+@app.post("/notify/test")
+async def notify_test(payload: Optional[dict] = None, authorization: Optional[str] = Header(default=None)):
+    _check_token(authorization)
+    test_message = (payload or {}).get("message") if isinstance(payload, dict) else None
+    text = test_message or "✅ Test notification from xau_mt4_bridge"
+    await _send_telegram_message(text)
+    return {
+        "ok": True,
+        "telegram_notify_enabled": TELEGRAM_NOTIFY_ENABLED,
+        "telegram_chat_id": TELEGRAM_CHAT_ID,
+        "bot_token_present": bool(TELEGRAM_BOT_TOKEN),
+        "message": text,
+    }
+
+
 @app.post("/execution/report")
 def execution_report(payload: dict, authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
