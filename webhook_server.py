@@ -49,6 +49,9 @@ AI_SIGNAL_PUBLISH_ENABLED = os.getenv("AI_SIGNAL_PUBLISH_ENABLED", "true").lower
 AI_SIGNAL_IGNORE_PUBLISH_ERRORS = os.getenv("AI_SIGNAL_IGNORE_PUBLISH_ERRORS", "true").lower() in {"1", "true", "yes", "on"}
 AI_SIGNAL_PROCESSING_INTERVAL_SEC = float(os.getenv("AI_SIGNAL_PROCESSING_INTERVAL_SEC", "0.1"))
 ACTIVE_SIGNAL_TTL_SEC = int(os.getenv("ACTIVE_SIGNAL_TTL_SEC", "120"))
+TELEGRAM_NOTIFY_ENABLED = os.getenv("TELEGRAM_NOTIFY_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 REVERSAL_ON_OPEN_POSITION = os.getenv("REVERSAL_ON_OPEN_POSITION", "false").lower() in {"1", "true", "yes", "on"}
 POST_CLOSE_COOLDOWN_SEC = int(os.getenv("POST_CLOSE_COOLDOWN_SEC", "30"))
 LOSS_COOLDOWN_SEC = int(os.getenv("LOSS_COOLDOWN_SEC", "180"))
@@ -462,6 +465,50 @@ def _store_generated_signal(payload: dict):
     _ensure_parent_dir(GENERATED_SIGNAL_STORE)
     with open(GENERATED_SIGNAL_STORE, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
+
+
+async def _send_telegram_message(text: str):
+    if not TELEGRAM_NOTIFY_ENABLED or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(url, json=payload)
+    except Exception as e:
+        print(f"Telegram notify error: {e}")
+
+
+def _format_execution_notification(payload: dict, current_signal: Optional[dict] = None) -> Optional[str]:
+    kind = str(payload.get("type") or "").upper()
+    signal = current_signal or {}
+    symbol = str(payload.get("symbol") or signal.get("symbol") or "?")
+    side = str(payload.get("side") or signal.get("side") or "?")
+    ticket = payload.get("ticket")
+    price = payload.get("price")
+
+    if kind == "OPEN":
+        return "\n".join([
+            "🟢 OPEN POSITION",
+            f"Symbol: {symbol}",
+            f"Side: {side}",
+            f"Ticket: {ticket}",
+            f"Price: {price}",
+        ])
+    if kind in {"CLOSE", "CLOSED", "EXIT"}:
+        outcome = str(payload.get("outcome") or payload.get("result") or "").upper()
+        pnl = payload.get("pnl")
+        exit_reason = payload.get("exit_reason")
+        return "\n".join([
+            "🔴 CLOSED POSITION",
+            f"Symbol: {symbol}",
+            f"Side: {side}",
+            f"Ticket: {ticket}",
+            f"Outcome: {outcome}",
+            f"PNL: {pnl}",
+            f"Exit: {exit_reason}",
+        ])
+    return None
 
 
 def _clamp(value: float, min_value: float, max_value: float) -> float:
@@ -2210,5 +2257,14 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
             current_signal["pattern_structure_reason"] = current_signal.get("pattern_structure_reason") or current_signal.get("structure_reason") or current_signal.get("market_context", {}).get("structure_reason")
             current_signal["pattern_trend_regime_reason"] = current_signal.get("pattern_trend_regime_reason") or current_signal.get("trend_regime_reason") or current_signal.get("market_context", {}).get("trend_regime_reason")
             _store_signal_payload(current_signal)
+
+    notify_text = _format_execution_notification(payload, current_signal if isinstance(current_signal, dict) else None)
+    if notify_text:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_send_telegram_message(notify_text))
+        except RuntimeError:
+            asyncio.run(_send_telegram_message(notify_text))
+
     _save_runtime_state()
     return {"ok": True}
