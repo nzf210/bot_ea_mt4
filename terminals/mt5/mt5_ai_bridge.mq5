@@ -142,7 +142,8 @@ string LoadStringState(string prefix)
    for(int i=0; i<len && i<64; i++)
    {
       if(!GlobalVariableCheck(PersistKey(prefix + "_" + IntegerToString(i)))) break;
-      result += CharToStr((int)GlobalVariableGet(PersistKey(prefix + "_" + IntegerToString(i))));
+      ushort ch = (ushort)GlobalVariableGet(PersistKey(prefix + "_" + IntegerToString(i)));
+      result += ShortToString(ch);
    }
    return result;
 }
@@ -236,7 +237,9 @@ double JsonGetDouble(string json, string key)
    int end = end1;
    if(end < 0 || (end2 >= 0 && end2 < end)) end = end2;
    if(end < 0) end = StringLen(json);
-   string val = StringTrimLeft(StringTrimRight(StringSubstr(json, start, end - start)));
+   string val = StringSubstr(json, start, end - start);
+   StringTrimLeft(val);
+   StringTrimRight(val);
    return StringToDouble(val);
 }
 
