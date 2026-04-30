@@ -36,6 +36,13 @@ string BuildRecentCandlesJson(string symbol, ENUM_TIMEFRAMES timeframe, int bars
    return candles;
 }
 
+string CharArrayToStringSafe(char &arr[])
+{
+   if(ArraySize(arr) <= 0)
+      return "";
+   return CharArrayToString(arr, 0, -1, CP_UTF8);
+}
+
 int OnInit()
 {
    EventSetTimer(30);
@@ -75,8 +82,21 @@ void OnTimer()
    char data[];
    char result[];
    string resultHeaders;
-   StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
+   int dataLen = StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
+   if(dataLen > 0 && data[dataLen - 1] == 0)
+      ArrayResize(data, dataLen - 1);
+
    int code = WebRequest("POST", ReceiverUrl, headers, 5000, data, result, resultHeaders);
    if(code == -1)
+   {
       Print("Snapshot send failed: ", GetLastError());
+      return;
+   }
+
+   string responseBody = CharArrayToStringSafe(result);
+   Print("MT5 snapshot sent, HTTP code: ", code);
+   if(StringLen(responseBody) > 0)
+      Print("MT5 snapshot response body: ", responseBody);
+   if(StringLen(resultHeaders) > 0)
+      Print("MT5 snapshot response headers: ", resultHeaders);
 }
