@@ -11,6 +11,8 @@ input int SlippagePoints = 20;
 input long MagicNumber = 20260430;
 input bool EnableTrading = true;
 input bool DebugLogging = true;
+input int PollIntervalSeconds = 3;
+input bool LogOnlyOnResponseChange = true;
 input double EntryZoneExecutionBufferRatio = 0.20;
 input double ExtremeEntryBlockRatio = 0.15;
 input double BreakEvenRMultInput = 0.85;
@@ -29,6 +31,8 @@ datetime lastProcessedAt = 0;
 datetime lastSignalTimestamp = 0;
 ulong lastPositionTicket = 0;
 string lastOpenSignalId = "";
+string lastRawResponse = "";
+datetime lastPollAt = 0;
 double lastOpenInitialRiskPrice = 0;
 double lastOpenInitialStopLoss = 0;
 double lastOpenInitialTp1 = 0;
@@ -257,7 +261,15 @@ string HttpGetLatestSignal()
       return "";
    }
    string response = CharArrayToString(result);
-   if(DebugLogging) DebugPrint("raw response=" + response);
+   if(DebugLogging)
+   {
+      bool shouldLog = true;
+      if(LogOnlyOnResponseChange && response == lastRawResponse)
+         shouldLog = false;
+      if(shouldLog)
+         DebugPrint("raw response=" + response);
+   }
+   lastRawResponse = response;
    return FlattenSignalResponse(response);
 }
 
@@ -456,11 +468,24 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(SlippagePoints);
    RestoreState();
+   EventSetTimer(PollIntervalSeconds > 0 ? PollIntervalSeconds : 3);
    return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   EventKillTimer();
 }
 
 void OnTick()
 {
+   ManageOpenPosition();
+   CheckClosedPositionReport();
+}
+
+void OnTimer()
+{
+   lastPollAt = TimeCurrent();
    ManageOpenPosition();
    CheckClosedPositionReport();
 
