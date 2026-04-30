@@ -62,11 +62,11 @@ void OnTimer()
    double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
    int spread = (int)SymbolInfoInteger(symbol, SYMBOL_SPREAD);
-   double open = iOpen(symbol, PERIOD_M1, 0);
-   double high = iHigh(symbol, PERIOD_M1, 0);
-   double low = iLow(symbol, PERIOD_M1, 0);
-   double close = iClose(symbol, PERIOD_M1, 0);
-   long volume = iVolume(symbol, PERIOD_M1, 0);
+   double candleOpen = iOpen(symbol, PERIOD_M1, 0);
+   double candleHigh = iHigh(symbol, PERIOD_M1, 0);
+   double candleLow = iLow(symbol, PERIOD_M1, 0);
+   double candleClose = iClose(symbol, PERIOD_M1, 0);
+   long candleVolume = iVolume(symbol, PERIOD_M1, 0);
    int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
    string recentCandles = BuildRecentCandlesJson(symbol, PERIOD_M1, 5, digits);
 
@@ -74,8 +74,8 @@ void OnTimer()
       "{\"timestamp_utc\":\"%s\",\"snapshots\":[{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"bid\":%s,\"ask\":%s,\"spread_points\":%d,\"ohlc\":{\"open\":%s,\"high\":%s,\"low\":%s,\"close\":%s},\"volume\":%d,\"recent_candles\":%s,\"terminal\":{\"platform\":\"mt5\",\"symbol_raw\":\"%s\"}}]}",
       IsoTimeUTC(), symbol,
       JsonNumber(bid, digits), JsonNumber(ask, digits), spread,
-      JsonNumber(open, digits), JsonNumber(high, digits), JsonNumber(low, digits), JsonNumber(close, digits),
-      (int)volume, recentCandles, symbol
+      JsonNumber(candleOpen, digits), JsonNumber(candleHigh, digits), JsonNumber(candleLow, digits), JsonNumber(candleClose, digits),
+      (int)candleVolume, recentCandles, symbol
    );
 
    string headers = "Authorization: Bearer " + ReceiverToken + "\r\nContent-Type: application/json; charset=utf-8\r\n";
