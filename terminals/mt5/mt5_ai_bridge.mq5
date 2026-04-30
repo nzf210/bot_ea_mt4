@@ -56,7 +56,14 @@ string NormalizeBridgeSymbol(string symbol)
 {
    string normalized = symbol;
    StringToUpper(normalized);
-   if(normalized == "GOLD") return "XAUUSD";
+   string compact = normalized;
+   StringReplace(compact, ".", "");
+   StringReplace(compact, "_", "");
+   StringReplace(compact, "-", "");
+
+   if(normalized == "GOLD" || compact == "GOLD") return "XAUUSD";
+   if(StringFind(compact, "XAUUSD") == 0) return "XAUUSD";
+   if(StringFind(compact, "GOLD") == 0) return "XAUUSD";
    return normalized;
 }
 
@@ -206,7 +213,12 @@ double CalcLot(double slPoints)
 {
    double riskAmount = AccountInfoDouble(ACCOUNT_EQUITY) * (RiskPercent / 100.0);
    double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-   double pointValuePerLot = tickValue;
+   double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double pointSize = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double pointValuePerLot = 0.0;
+   if(tickValue > 0 && tickSize > 0 && pointSize > 0)
+      pointValuePerLot = tickValue * (pointSize / tickSize);
+   if(pointValuePerLot <= 0) pointValuePerLot = tickValue;
    if(pointValuePerLot <= 0) pointValuePerLot = 1.0;
    double rawLot = riskAmount / (slPoints * pointValuePerLot);
    double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -593,9 +605,41 @@ void OnTimer()
 
    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
    double slPoints = MathAbs(price - stopLoss) / point;
-   if(slPoints <= 0) return;
+   if(slPoints <= 0)
+   {
+      SendExecutionReject(signalId, symbol, side, "invalid_stop_loss_distance", price, entryMin, entryMax);
+      return;
+   }
+
+   int stopsLevelPoints = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   int freezeLevelPoints = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   int minStopDistancePoints = MathMax(stopsLevelPoints, freezeLevelPoints);
+   double minStopDistancePrice = minStopDistancePoints * point;
+   double slDistancePrice = MathAbs(price - stopLoss);
+   double tpDistancePrice = (tp1 > 0) ? MathAbs(tp1 - price) : 0.0;
+
+   if(minStopDistancePoints > 0)
+   {
+      if(slDistancePrice < minStopDistancePrice)
+      {
+         DebugPrint(StringFormat("broker stop guard blocked: sl_distance=%G min_required=%G stops_level=%d freeze_level=%d", slDistancePrice, minStopDistancePrice, stopsLevelPoints, freezeLevelPoints));
+         SendExecutionReject(signalId, symbol, side, "stop_loss_too_close_for_broker", price, entryMin, entryMax);
+         return;
+      }
+      if(tp1 > 0 && tpDistancePrice < minStopDistancePrice)
+      {
+         DebugPrint(StringFormat("broker stop guard blocked: tp_distance=%G min_required=%G stops_level=%d freeze_level=%d", tpDistancePrice, minStopDistancePrice, stopsLevelPoints, freezeLevelPoints));
+         SendExecutionReject(signalId, symbol, side, "take_profit_too_close_for_broker", price, entryMin, entryMax);
+         return;
+      }
+   }
+
    double lot = CalcLot(slPoints);
-   if(lot < SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN)) return;
+   if(lot < SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
+   {
+      SendExecutionReject(signalId, symbol, side, "calculated_lot_below_minimum", price, entryMin, entryMax);
+      return;
+   }
 
    bool ok = false;
    if(side == "BUY") ok = trade.Buy(lot, _Symbol, ask, stopLoss, tp1, signalId);
@@ -629,6 +673,23 @@ void OnTimer()
    }
    else
    {
-      DebugPrint("trade open failed retcode=" + IntegerToString((int)trade.ResultRetcode()));
+      int retcode = (int)trade.ResultRetcode();
+      string retcodeDesc = trade.ResultRetcodeDescription();
+      string orderComment = trade.ResultComment();
+      DebugPrint(StringFormat(
+         "trade open failed retcode=%d desc=%s comment=%s side=%s lot=%G price=%G sl=%G tp=%G spread=%d stops_level=%d freeze_level=%d symbol=%s",
+         retcode,
+         retcodeDesc,
+         orderComment,
+         side,
+         lot,
+         price,
+         stopLoss,
+         tp1,
+         spread,
+         stopsLevelPoints,
+         freezeLevelPoints,
+         _Symbol
+      ));
    }
 }
