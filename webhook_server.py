@@ -11,6 +11,33 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 from gemini_decider import decide_trade, normalize_symbol, get_gemini_runtime_state, set_gemini_runtime_state
+from app_core.storage import append_jsonl, read_json_file, write_json_file, ensure_parent_dir
+from app_core.runtime_state import save_runtime_state, load_runtime_state
+from app_core.signal_state import (
+    apply_execution_reject,
+    apply_execution_report,
+    build_bridge_contract,
+    current_signal_summary,
+    is_signal_fresh,
+    parse_iso_utc,
+    signal_staleness,
+)
+from app_core.contracts.terminal import (
+    BridgeSignal as NeutralBridgeSignal,
+    EntryZone as NeutralEntryZone,
+    MarketContext as NeutralMarketContext,
+    MarketSnapshot as NeutralMarketSnapshot,
+    OHLC as NeutralOHLC,
+    SnapshotBatch as NeutralSnapshotBatch,
+    SnapshotCandle as NeutralSnapshotCandle,
+    TakeProfit as NeutralTakeProfit,
+)
+from app_core.contracts.compat import (
+    upgrade_execution_reject_payload,
+    upgrade_execution_report_payload,
+    upgrade_signal_payload,
+    upgrade_snapshot_batch_payload,
+)
 
 BASE_DIR = os.path.dirname(__file__)
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -242,68 +269,14 @@ SNAPSHOT_STATE = {
 SNAPSHOT_QUEUE: asyncio.Queue = asyncio.Queue()
 
 
-class EntryZone(BaseModel):
-    min: float
-    max: float
-
-
-class TakeProfit(BaseModel):
-    label: str
-    price: float
-    close_pct: float = Field(gt=0, le=1)
-
-
-class MarketContext(BaseModel):
-    spread_max_points: int = 35
-    session: str = "LONDON_NY_OVERLAP"
-    news_block_minutes: int = 30
-
-
-class Signal(BaseModel):
-    signal_id: str
-    timestamp_utc: str
-    symbol: str
-    timeframe: str
-    side: str
-    entry_zone: EntryZone
-    stop_loss: float
-    take_profit: List[TakeProfit]
-    confidence: float = Field(ge=0, le=1)
-    invalidation: Optional[str] = ""
-    max_signal_age_sec: int = 180
-    market_context: MarketContext = MarketContext()
-
-
-class OHLC(BaseModel):
-    open: float
-    high: float
-    low: float
-    close: float
-
-
-class SnapshotCandle(BaseModel):
-    shift: int = 0
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float = 0
-
-
-class Snapshot(BaseModel):
-    symbol: str
-    timeframe: str = "M1"
-    bid: float
-    ask: float
-    spread_points: int
-    ohlc: OHLC
-    volume: float = 0
-    recent_candles: List[SnapshotCandle] = []
-
-
-class SnapshotBatch(BaseModel):
-    timestamp_utc: str
-    snapshots: List[Snapshot]
+EntryZone = NeutralEntryZone
+TakeProfit = NeutralTakeProfit
+MarketContext = NeutralMarketContext
+Signal = NeutralBridgeSignal
+OHLC = NeutralOHLC
+SnapshotCandle = NeutralSnapshotCandle
+Snapshot = NeutralMarketSnapshot
+SnapshotBatch = NeutralSnapshotBatch
 
 
 @asynccontextmanager
@@ -345,36 +318,22 @@ def _check_token(auth_header: Optional[str]):
         raise HTTPException(status_code=403, detail="invalid token")
 
 
-def _ensure_parent_dir(path: str):
-    parent = os.path.dirname(path) or BASE_DIR
-    os.makedirs(parent, exist_ok=True)
-
-
 def _append_journal(event: dict):
-    _ensure_parent_dir(JOURNAL_STORE)
-    with open(JOURNAL_STORE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(event) + "\n")
+    append_jsonl(JOURNAL_STORE, event)
 
 
 def _save_news_cache_to_file():
     try:
-        with open(NEWS_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(NEWS_CACHE, f, indent=2)
+        write_json_file(NEWS_CACHE_FILE, NEWS_CACHE)
     except Exception as e:
         print(f"Error saving news cache: {e}")
 
 
 def _load_news_cache_from_file():
-    if not os.path.exists(NEWS_CACHE_FILE):
-        return
-    try:
-        with open(NEWS_CACHE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                NEWS_CACHE["latest"] = data.get("latest", [])
-                NEWS_CACHE["updated_at"] = data.get("updated_at")
-    except Exception as e:
-        print(f"Error loading news cache: {e}")
+    data = read_json_file(NEWS_CACHE_FILE, default=None)
+    if isinstance(data, dict):
+        NEWS_CACHE["latest"] = data.get("latest", [])
+        NEWS_CACHE["updated_at"] = data.get("updated_at")
 
 
 def _save_ai4trade_raw(payload):
@@ -394,59 +353,38 @@ def _append_ai4trade_dry_run(event: dict):
 
 
 def _save_snapshot_batch(payload: dict):
-    _ensure_parent_dir(SNAPSHOT_STORE)
-    with open(SNAPSHOT_STORE, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    write_json_file(SNAPSHOT_STORE, payload)
 
 
 def _load_state():
-    if not os.path.exists(AI_SIGNAL_STATE_FILE):
-        return {"last_keys": {}}
-    try:
-        with open(AI_SIGNAL_STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {"last_keys": {}}
+    return read_json_file(AI_SIGNAL_STATE_FILE, default={"last_keys": {}})
 
 
 def _save_state(state: dict):
-    _ensure_parent_dir(AI_SIGNAL_STATE_FILE)
-    with open(AI_SIGNAL_STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
+    write_json_file(AI_SIGNAL_STATE_FILE, state)
 
 
 def _save_runtime_state():
-    payload = {
-        "snapshot_state": SNAPSHOT_STATE,
-        "ai4trade_state": AI4TRADE_STATE,
-        "gemini_runtime_state": get_gemini_runtime_state(),
-        "saved_at": datetime.now(timezone.utc).isoformat(),
-    }
-    _ensure_parent_dir(RUNTIME_STATE_FILE)
-    with open(RUNTIME_STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    save_runtime_state(
+        runtime_state_file=RUNTIME_STATE_FILE,
+        snapshot_state=SNAPSHOT_STATE,
+        ai4trade_state=AI4TRADE_STATE,
+        get_gemini_runtime_state=get_gemini_runtime_state,
+    )
 
 
 def _load_runtime_state():
-    if not os.path.exists(RUNTIME_STATE_FILE):
-        STARTUP_STATUS["runtime_state_restored"] = False
-        STARTUP_STATUS["runtime_state_source"] = None
-        STARTUP_STATUS["runtime_state_saved_at"] = None
-        STARTUP_STATUS["runtime_state_error"] = None
-        return
     try:
-        with open(RUNTIME_STATE_FILE, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        if isinstance(payload.get("snapshot_state"), dict):
-            SNAPSHOT_STATE.update(payload["snapshot_state"])
-        if isinstance(payload.get("ai4trade_state"), dict):
-            AI4TRADE_STATE.update(payload["ai4trade_state"])
-        if isinstance(payload.get("gemini_runtime_state"), dict):
-            set_gemini_runtime_state(payload["gemini_runtime_state"])
-        STARTUP_STATUS["runtime_state_restored"] = True
-        STARTUP_STATUS["runtime_state_source"] = RUNTIME_STATE_FILE
-        STARTUP_STATUS["runtime_state_saved_at"] = payload.get("saved_at")
-        STARTUP_STATUS["runtime_state_error"] = None
+        result = load_runtime_state(
+            runtime_state_file=RUNTIME_STATE_FILE,
+            snapshot_state=SNAPSHOT_STATE,
+            ai4trade_state=AI4TRADE_STATE,
+            set_gemini_runtime_state=set_gemini_runtime_state,
+        )
+        STARTUP_STATUS["runtime_state_restored"] = result.get("restored", False)
+        STARTUP_STATUS["runtime_state_source"] = result.get("source")
+        STARTUP_STATUS["runtime_state_saved_at"] = result.get("saved_at")
+        STARTUP_STATUS["runtime_state_error"] = result.get("error")
     except Exception as e:
         STARTUP_STATUS["runtime_state_restored"] = False
         STARTUP_STATUS["runtime_state_source"] = RUNTIME_STATE_FILE
@@ -456,15 +394,11 @@ def _load_runtime_state():
 
 
 def _store_signal_payload(payload: dict):
-    _ensure_parent_dir(SIGNAL_STORE)
-    with open(SIGNAL_STORE, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    write_json_file(SIGNAL_STORE, payload)
 
 
 def _store_generated_signal(payload: dict):
-    _ensure_parent_dir(GENERATED_SIGNAL_STORE)
-    with open(GENERATED_SIGNAL_STORE, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    write_json_file(GENERATED_SIGNAL_STORE, payload)
 
 
 async def _send_telegram_message(text: str):
@@ -524,35 +458,15 @@ def _snapshot_range(snapshot: dict) -> float:
 
 
 def _load_current_signal():
-    if not os.path.exists(SIGNAL_STORE):
-        return None
-    try:
-        with open(SIGNAL_STORE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
+    return read_json_file(SIGNAL_STORE, default=None)
 
 
 def _is_signal_fresh(signal: Optional[dict]) -> bool:
-    if not signal:
-        return False
-    ts = signal.get("timestamp_utc")
-    if not ts:
-        return False
-    try:
-        signal_dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-    except Exception:
-        return False
-    return (datetime.now(timezone.utc) - signal_dt).total_seconds() <= ACTIVE_SIGNAL_TTL_SEC
+    return is_signal_fresh(signal, ACTIVE_SIGNAL_TTL_SEC)
 
 
 def _parse_iso_utc(value: Optional[str]):
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except Exception:
-        return None
+    return parse_iso_utc(value)
 
 
 def _check_signal_conflict(current_signal: Optional[dict], normalized_symbol: str, decision: str, session_bucket: Optional[str] = None):
@@ -1319,22 +1233,7 @@ def _effective_risk_config():
 
 
 def _current_signal_summary():
-    current_signal = _load_current_signal()
-    signal_age_sec = None
-    if current_signal:
-        ts = _parse_iso_utc(current_signal.get("timestamp_utc"))
-        if ts is not None:
-            signal_age_sec = round((datetime.now(timezone.utc) - ts).total_seconds(), 2)
-    return {
-        "present": current_signal is not None,
-        "signal_id": current_signal.get("signal_id") if current_signal else None,
-        "symbol": current_signal.get("symbol") if current_signal else None,
-        "side": current_signal.get("side") if current_signal else None,
-        "status": current_signal.get("status") if current_signal else None,
-        "confidence": current_signal.get("confidence") if current_signal else None,
-        "age_sec": signal_age_sec,
-        "fresh": _is_signal_fresh(current_signal),
-    }
+    return current_signal_summary(_load_current_signal(), ACTIVE_SIGNAL_TTL_SEC)
 
 
 def _risk_state_summary():
@@ -1846,6 +1745,7 @@ def ops_summary(authorization: Optional[str] = Header(default=None)):
 @app.post("/market/snapshot")
 async def receive_snapshot(batch: SnapshotBatch, authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
+    batch = SnapshotBatch.model_validate(upgrade_snapshot_batch_payload(batch.model_dump()))
     try:
         datetime.fromisoformat(batch.timestamp_utc.replace("Z", "+00:00"))
     except Exception:
@@ -1976,6 +1876,7 @@ def audit_summary(limit: int = 200, authorization: Optional[str] = Header(defaul
 @app.post("/signal")
 def publish_signal(signal: Signal, authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
+    signal = Signal.model_validate(upgrade_signal_payload(signal.model_dump()))
     if signal.symbol.upper() != "XAUUSD":
         raise HTTPException(status_code=400, detail="only XAUUSD supported")
     if signal.side.upper() not in {"BUY", "SELL"}:
@@ -2009,42 +1910,11 @@ def publish_signal(signal: Signal, authorization: Optional[str] = Header(default
 
 
 def _build_bridge_contract(data: dict):
-    return {
-        "signal_id": data.get("signal_id"),
-        "symbol": data.get("symbol"),
-        "side": data.get("side"),
-        "timestamp_utc": data.get("timestamp_utc"),
-        "stop_loss": data.get("stop_loss"),
-        "entry_zone_min": ((data.get("entry_zone") or {}).get("min") if isinstance(data.get("entry_zone"), dict) else None),
-        "entry_zone_max": ((data.get("entry_zone") or {}).get("max") if isinstance(data.get("entry_zone"), dict) else None),
-        "tp1_price": (((data.get("take_profit") or [])[0] or {}).get("price") if isinstance(data.get("take_profit"), list) and len(data.get("take_profit")) > 0 and isinstance(data.get("take_profit")[0], dict) else None),
-        "max_signal_age_sec": data.get("max_signal_age_sec"),
-        "break_even_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("break_even_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
-        "break_even_buffer_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("break_even_buffer_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
-        "trailing_start_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_start_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
-        "trailing_step_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_step_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
-        "trailing_sl_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("trailing_sl_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
-        "time_based_trailing_after_sec": (((data.get("market_context") or {}).get("trailing") or {}).get("time_based_after_sec") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
-        "time_based_trailing_min_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("time_based_min_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
-        "time_based_trailing_sl_r_mult": (((data.get("market_context") or {}).get("trailing") or {}).get("time_based_sl_r_mult") if isinstance((data.get("market_context") or {}).get("trailing"), dict) else None),
-        "trailing_enabled": bool((((data.get("market_context") or {}).get("trailing") or {}).get("enabled")) if isinstance((data.get("market_context") or {}).get("trailing"), dict) else False),
-    }
+    return build_bridge_contract(data)
 
 
 def _signal_staleness(data: dict):
-    signal_age_sec = None
-    is_stale = None
-    issue = None
-    try:
-        ts = data.get("timestamp_utc")
-        max_age = float(data.get("max_signal_age_sec") or 0)
-        if ts:
-            signal_dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-            signal_age_sec = round((datetime.now(timezone.utc) - signal_dt).total_seconds(), 2)
-            is_stale = bool(max_age > 0 and signal_age_sec > max_age)
-    except Exception:
-        issue = "timestamp_invalid"
-    return {"signal_age_sec": signal_age_sec, "is_stale": is_stale, "issue": issue}
+    return signal_staleness(data)
 
 
 @app.get("/signal/latest")
@@ -2140,14 +2010,9 @@ def contract_status(authorization: Optional[str] = Header(default=None)):
 @app.post("/execution/reject")
 def execution_reject(payload: dict, authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-    event = dict(payload)
-    event["type"] = "execution_reject"
-    event["at"] = datetime.now(timezone.utc).isoformat()
+    payload = upgrade_execution_reject_payload(payload)
+    event = apply_execution_reject(SNAPSHOT_STATE, payload, _save_runtime_state)
     _append_journal(event)
-    SNAPSHOT_STATE["last_no_trade_at"] = event["at"]
-    SNAPSHOT_STATE["last_no_trade_reason"] = payload.get("reason")
-    SNAPSHOT_STATE["last_no_trade_symbol"] = payload.get("symbol")
-    _save_runtime_state()
     return {"ok": True}
 
 
@@ -2169,109 +2034,23 @@ async def notify_test(payload: Optional[dict] = None, authorization: Optional[st
 @app.post("/execution/report")
 def execution_report(payload: dict, authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
-    report_kind = str(payload.get("type", "")).upper()
-    event = dict(payload)
-    event["event_type"] = "execution_report"
-    event["at"] = datetime.now(timezone.utc).isoformat()
-    _append_journal(event)
-
-    SNAPSHOT_STATE["last_execution_at"] = event["at"]
-    SNAPSHOT_STATE["last_execution_signal_id"] = payload.get("signal_id")
-    SNAPSHOT_STATE["last_execution_type"] = report_kind
-    SNAPSHOT_STATE["last_execution_ticket"] = payload.get("ticket")
-    if payload.get("exit_reason") is not None:
-        SNAPSHOT_STATE["last_exit_reason"] = payload.get("exit_reason")
-    if payload.get("initial_risk_price") is not None:
-        SNAPSHOT_STATE["last_trailing_initial_risk_price"] = payload.get("initial_risk_price")
-    if payload.get("initial_stop_loss") is not None:
-        SNAPSHOT_STATE["last_trailing_initial_stop_loss"] = payload.get("initial_stop_loss")
-    if payload.get("initial_tp1") is not None:
-        SNAPSHOT_STATE["last_trailing_initial_tp1"] = payload.get("initial_tp1")
-    if payload.get("last_applied_stop_loss") is not None:
-        SNAPSHOT_STATE["last_trailing_last_applied_stop_loss"] = payload.get("last_applied_stop_loss")
-    if payload.get("break_even_activated") is not None:
-        SNAPSHOT_STATE["last_break_even_activated"] = payload.get("break_even_activated")
-    if payload.get("trailing_activated") is not None:
-        SNAPSHOT_STATE["last_trailing_activated"] = payload.get("trailing_activated")
-
+    payload = upgrade_execution_report_payload(payload)
     current_signal = _load_current_signal()
-    if current_signal and current_signal.get("signal_id") == payload.get("signal_id"):
-        if report_kind == "OPEN":
-            current_signal["status"] = "OPEN"
-            current_signal["executed_ticket"] = payload.get("ticket")
-            current_signal["executed_at"] = event["at"]
-            _store_signal_payload(current_signal)
-        elif report_kind in {"CLOSE", "CLOSED", "EXIT"}:
-            current_signal["status"] = "CLOSED"
-            current_signal["closed_at"] = event["at"]
-            outcome = str(payload.get("outcome", payload.get("result", ""))).upper()
-            pnl = payload.get("pnl")
-            if outcome:
-                current_signal["outcome"] = outcome
-            if pnl is not None:
-                current_signal["pnl"] = pnl
-            if payload.get("exit_reason") is not None:
-                current_signal["exit_reason"] = payload.get("exit_reason")
-            side = current_signal.get("side")
-            if outcome in {"LOSS", "SL", "STOP_LOSS", "NEGATIVE"}:
-                SNAPSHOT_STATE["last_trade_outcome"] = outcome
-                SNAPSHOT_STATE["last_loss_side"] = side
-                SNAPSHOT_STATE["last_loss_at"] = event["at"]
-                losses = SNAPSHOT_STATE.setdefault("consecutive_losses", {"BUY": 0, "SELL": 0})
-                losses[side] = int(losses.get(side, 0)) + 1
-                market_context = current_signal.get("market_context") if isinstance(current_signal.get("market_context"), dict) else {}
-                pattern_key = "|".join([
-                    str(current_signal.get("side") or ""),
-                    str(current_signal.get("pattern_structure_reason") or current_signal.get("structure_reason") or market_context.get("structure_reason") or "unknown_structure"),
-                    str(current_signal.get("pattern_trend_regime_reason") or current_signal.get("trend_regime_reason") or market_context.get("trend_regime_reason") or "unknown_trend"),
-                ])
-                recent_patterns = SNAPSHOT_STATE.setdefault("recent_loss_patterns", [])
-                recent_patterns.append({
-                    "at": event["at"],
-                    "pattern_key": pattern_key,
-                    "signal_id": current_signal.get("signal_id"),
-                    "side": side,
-                    "outcome": outcome,
-                })
-                SNAPSHOT_STATE["recent_loss_patterns"] = recent_patterns[-50:]
-                session_bucket = str((current_signal.get("market_context") or {}).get("trailing", {}).get("session_bucket") or current_signal.get("session_bucket") or "UNKNOWN")
-                if SESSION_BUCKET_COOLDOWN_ENABLED:
-                    losses = SNAPSHOT_STATE.setdefault("consecutive_losses", {"BUY": 0, "SELL": 0})
-                    if int(losses.get(side, 0) or 0) >= SESSION_BUCKET_COOLDOWN_THRESHOLD:
-                        cooldowns = SNAPSHOT_STATE.setdefault("session_cooldowns", {})
-                        cooldowns[session_bucket] = (datetime.now(timezone.utc) + __import__("datetime").timedelta(seconds=SESSION_BUCKET_COOLDOWN_SEC)).isoformat()
-                        SNAPSHOT_STATE["session_cooldowns"] = cooldowns
-                exit_reason = str(payload.get("exit_reason") or "").upper()
-                if SLIPPAGE_COOLDOWN_ENABLED and exit_reason == "GAP_SLIPPAGE_SL":
-                    now_dt = datetime.now(timezone.utc)
-                    recent_slippage = SNAPSHOT_STATE.setdefault("recent_slippage_events", [])
-                    recent_slippage.append({
-                        "at": event["at"],
-                        "signal_id": current_signal.get("signal_id"),
-                        "side": side,
-                        "exit_reason": exit_reason,
-                    })
-                    kept = []
-                    for item in recent_slippage:
-                        at_dt = _parse_iso_utc(item.get("at"))
-                        if at_dt is None:
-                            continue
-                        if (now_dt - at_dt).total_seconds() <= SLIPPAGE_COOLDOWN_WINDOW_SEC:
-                            kept.append(item)
-                    SNAPSHOT_STATE["recent_slippage_events"] = kept[-20:]
-                    if len(kept) >= SLIPPAGE_COOLDOWN_THRESHOLD:
-                        SNAPSHOT_STATE["slippage_cooldown_until"] = (now_dt + __import__("datetime").timedelta(seconds=SLIPPAGE_COOLDOWN_SEC)).isoformat()
-            elif outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE", "BREAKEVEN", "BE"}:
-                SNAPSHOT_STATE["last_trade_outcome"] = outcome
-                losses = SNAPSHOT_STATE.setdefault("consecutive_losses", {"BUY": 0, "SELL": 0})
-                if side in losses:
-                    losses[side] = 0
-                if outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE"}:
-                    SNAPSHOT_STATE["last_loss_side"] = None
-                    SNAPSHOT_STATE["last_loss_at"] = None
-            current_signal["pattern_structure_reason"] = current_signal.get("pattern_structure_reason") or current_signal.get("structure_reason") or current_signal.get("market_context", {}).get("structure_reason")
-            current_signal["pattern_trend_regime_reason"] = current_signal.get("pattern_trend_regime_reason") or current_signal.get("trend_regime_reason") or current_signal.get("market_context", {}).get("trend_regime_reason")
-            _store_signal_payload(current_signal)
+    event, current_signal = apply_execution_report(
+        snapshot_state=SNAPSHOT_STATE,
+        payload=payload,
+        current_signal=current_signal,
+        store_signal_payload=_store_signal_payload,
+        save_runtime_state=_save_runtime_state,
+        parse_iso_utc_fn=_parse_iso_utc,
+        session_bucket_cooldown_enabled=SESSION_BUCKET_COOLDOWN_ENABLED,
+        session_bucket_cooldown_threshold=SESSION_BUCKET_COOLDOWN_THRESHOLD,
+        session_bucket_cooldown_sec=SESSION_BUCKET_COOLDOWN_SEC,
+        slippage_cooldown_enabled=SLIPPAGE_COOLDOWN_ENABLED,
+        slippage_cooldown_window_sec=SLIPPAGE_COOLDOWN_WINDOW_SEC,
+        slippage_cooldown_sec=SLIPPAGE_COOLDOWN_SEC,
+    )
+    _append_journal(event)
 
     notify_text = _format_execution_notification(payload, current_signal if isinstance(current_signal, dict) else None)
     if notify_text:
@@ -2281,5 +2060,4 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
         except RuntimeError:
             asyncio.run(_send_telegram_message(notify_text))
 
-    _save_runtime_state()
     return {"ok": True}
