@@ -1030,6 +1030,68 @@ def _quality_tier(score: float, pf: dict):
     return {"tier": "C", "label": "fragile_quality", "penalty_count": penalty_count}
 
 
+def _build_trend_context(pf: dict) -> dict:
+    bias = str(pf.get("bias") or "UNKNOWN").upper()
+    trend_score = float(pf.get("trend_regime_score") or 0.0)
+    alignment_count = int(pf.get("trend_regime_alignment") or 0)
+    opposing_count = int(pf.get("trend_regime_opposing_count") or 0)
+    market_mode = str(pf.get("market_mode") or "UNKNOWN").upper()
+    body_ratio = float(pf.get("body_ratio") or 0.0)
+    late_ratio = float(pf.get("late_ratio") or 1.0)
+    exhaustion_flag = body_ratio >= EXHAUSTION_BODY_RATIO or late_ratio >= max(LATE_ENTRY_RANGE_FACTOR * 0.9, 0.5)
+    continuation_candidate = alignment_count >= TREND_REGIME_ALIGNMENT_MIN and trend_score >= TREND_REGIME_SCORE_MIN and opposing_count <= 1 and market_mode not in {"CHOPPY", "TOXIC"}
+    reversal_candidate = alignment_count <= max(TREND_REGIME_SOFT_ALIGNMENT_ALLOWED, 2) and opposing_count >= 1 and body_ratio >= MIN_STRUCTURE_BODY_RATIO and market_mode in {"BALANCED", "TRENDING", "QUIET"}
+    return {
+        "dominant_bias": bias,
+        "trend_strength": round(trend_score, 4),
+        "alignment_count": alignment_count,
+        "opposing_count": opposing_count,
+        "market_mode": market_mode,
+        "exhaustion_flag": exhaustion_flag,
+        "reversal_candidate": reversal_candidate,
+        "continuation_candidate": continuation_candidate,
+        "late_ratio": round(late_ratio, 4),
+        "body_ratio": round(body_ratio, 4),
+    }
+
+
+def _classify_setup_type(pf: dict, trend_context: dict, quality_tier: dict) -> dict:
+    bias = str(pf.get("bias") or "UNKNOWN").upper()
+    quality = str(quality_tier.get("tier") or "C").upper()
+    market_mode = str(trend_context.get("market_mode") or "UNKNOWN").upper()
+    continuation_candidate = bool(trend_context.get("continuation_candidate"))
+    reversal_candidate = bool(trend_context.get("reversal_candidate"))
+    exhaustion_flag = bool(trend_context.get("exhaustion_flag"))
+    trend_strength = float(trend_context.get("trend_strength") or 0.0)
+    alignment_count = int(trend_context.get("alignment_count") or 0)
+
+    if continuation_candidate and quality in {"A", "B"}:
+        return {
+            "setup_type": "CONTINUATION",
+            "setup_reason": f"continuation_aligned:{bias}|trend={trend_strength:.2f}|align={alignment_count}",
+            "trend_aligned": True,
+            "reversal_confirmed": False,
+            "continuation_confirmed": True,
+        }
+
+    if reversal_candidate and quality == "A" and not exhaustion_flag and market_mode not in {"CHOPPY", "TOXIC"}:
+        return {
+            "setup_type": "REVERSAL",
+            "setup_reason": f"reversal_candidate:{bias}|trend={trend_strength:.2f}|align={alignment_count}",
+            "trend_aligned": False,
+            "reversal_confirmed": True,
+            "continuation_confirmed": False,
+        }
+
+    return {
+        "setup_type": "NO_TRADE",
+        "setup_reason": f"setup_ambiguous:{bias}|trend={trend_strength:.2f}|mode={market_mode}|quality={quality}",
+        "trend_aligned": continuation_candidate,
+        "reversal_confirmed": False,
+        "continuation_confirmed": continuation_candidate,
+    }
+
+
 def decide_with_mock_gemini(snapshot: dict):
     pf = prefilter(snapshot)
     if not pf["pass"]:
@@ -1039,9 +1101,14 @@ def decide_with_mock_gemini(snapshot: dict):
     decision = pf["bias"] if score >= trade_threshold else "NO_TRADE"
     reason = pf["reason"] if decision != "NO_TRADE" else f"deterministic_score_too_low:{score:.2f}|threshold={trade_threshold:.2f}|{pf['reason']}"
     quality_tier = _quality_tier(score, pf)
+    trend_context = _build_trend_context(pf)
+    setup_meta = _classify_setup_type(pf, trend_context, quality_tier)
     if decision in {"BUY", "SELL"} and QUALITY_TIER_C_BLOCK_ENABLED and quality_tier.get("tier") == "C":
         decision = "NO_TRADE"
         reason = f"quality_tier_block:C|score={score:.2f}|{pf['reason']}"
+    if decision in {"BUY", "SELL"} and setup_meta.get("setup_type") == "NO_TRADE":
+        decision = "NO_TRADE"
+        reason = f"setup_type_block:{setup_meta.get('setup_reason')}|{pf['reason']}"
     return {
         "decision": decision,
         "confidence": score,
@@ -1087,6 +1154,12 @@ def decide_with_mock_gemini(snapshot: dict):
         "quality_tier": quality_tier.get("tier"),
         "quality_tier_label": quality_tier.get("label"),
         "quality_penalty_count": quality_tier.get("penalty_count"),
+        "trend_context": trend_context,
+        "setup_type": setup_meta.get("setup_type"),
+        "setup_reason": setup_meta.get("setup_reason"),
+        "trend_aligned": setup_meta.get("trend_aligned"),
+        "reversal_confirmed": setup_meta.get("reversal_confirmed"),
+        "continuation_confirmed": setup_meta.get("continuation_confirmed"),
     }
 
 
@@ -1267,9 +1340,17 @@ def decide_trade(snapshot: dict):
         gemini_result["fusion_score"] = fusion_score
 
         quality_tier = _quality_tier(fusion_score, pf)
+        trend_context = _build_trend_context(pf)
+        setup_meta = _classify_setup_type(pf, trend_context, quality_tier)
         gemini_result["quality_tier"] = quality_tier.get("tier")
         gemini_result["quality_tier_label"] = quality_tier.get("label")
         gemini_result["quality_penalty_count"] = quality_tier.get("penalty_count")
+        gemini_result["trend_context"] = trend_context
+        gemini_result["setup_type"] = setup_meta.get("setup_type")
+        gemini_result["setup_reason"] = setup_meta.get("setup_reason")
+        gemini_result["trend_aligned"] = setup_meta.get("trend_aligned")
+        gemini_result["reversal_confirmed"] = setup_meta.get("reversal_confirmed")
+        gemini_result["continuation_confirmed"] = setup_meta.get("continuation_confirmed")
         if gemini_result.get("decision") in {"BUY", "SELL"} and QUALITY_TIER_C_BLOCK_ENABLED and quality_tier.get("tier") == "C":
             return {
                 "decision": "NO_TRADE",
@@ -1293,6 +1374,36 @@ def decide_trade(snapshot: dict):
                 "quality_tier": quality_tier.get("tier"),
                 "quality_tier_label": quality_tier.get("label"),
                 "quality_penalty_count": quality_tier.get("penalty_count"),
+            }
+        if gemini_result.get("decision") in {"BUY", "SELL"} and setup_meta.get("setup_type") == "NO_TRADE":
+            return {
+                "decision": "NO_TRADE",
+                "confidence": fusion_score,
+                "reason": f"setup_type_block:{setup_meta.get('setup_reason')}|{gemini_result.get('reason')}",
+                "entry": gemini_result.get("entry"),
+                "symbol": gemini_result.get("symbol"),
+                "timeframe": gemini_result.get("timeframe"),
+                "decision_source": "setup_gate",
+                "evaluation": evaluation,
+                "deterministic_score": deterministic_score,
+                "fusion_score": fusion_score,
+                "adaptive_trade_threshold": adaptive_trade_threshold,
+                "adaptive_no_trade_threshold": adaptive_no_trade_threshold,
+                "trend_regime_reason": fallback.get("trend_regime_reason"),
+                "trend_regime_score": fallback.get("trend_regime_score"),
+                "trend_regime_alignment": fallback.get("trend_regime_alignment"),
+                "trend_regime_opposing_count": fallback.get("trend_regime_opposing_count"),
+                "trend_regime_strong_aligned": fallback.get("trend_regime_strong_aligned"),
+                "trend_regime_close_position": fallback.get("trend_regime_close_position"),
+                "quality_tier": quality_tier.get("tier"),
+                "quality_tier_label": quality_tier.get("label"),
+                "quality_penalty_count": quality_tier.get("penalty_count"),
+                "trend_context": trend_context,
+                "setup_type": setup_meta.get("setup_type"),
+                "setup_reason": setup_meta.get("setup_reason"),
+                "trend_aligned": setup_meta.get("trend_aligned"),
+                "reversal_confirmed": setup_meta.get("reversal_confirmed"),
+                "continuation_confirmed": setup_meta.get("continuation_confirmed"),
             }
         if gemini_result.get("decision") == fallback.get("decision"):
             gemini_result["deterministic_score"] = deterministic_score
