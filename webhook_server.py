@@ -175,6 +175,20 @@ MARKET_MODE_TOXIC_SL_MULT = float(os.getenv("MARKET_MODE_TOXIC_SL_MULT", "0.95")
 MARKET_MODE_TOXIC_TP_MULT = float(os.getenv("MARKET_MODE_TOXIC_TP_MULT", "0.92"))
 TRENDING_SELL_EXTRA_SL_MULT = float(os.getenv("TRENDING_SELL_EXTRA_SL_MULT", "1.05"))
 TRENDING_SELL_EXTRA_TP_MULT = float(os.getenv("TRENDING_SELL_EXTRA_TP_MULT", "1.03"))
+CONTINUATION_ENTRY_ZONE_MULT = float(os.getenv("CONTINUATION_ENTRY_ZONE_MULT", "0.95"))
+CONTINUATION_SL_MULT = float(os.getenv("CONTINUATION_SL_MULT", "1.00"))
+CONTINUATION_TP_MULT = float(os.getenv("CONTINUATION_TP_MULT", "1.08"))
+CONTINUATION_MIN_RR_TP1 = float(os.getenv("CONTINUATION_MIN_RR_TP1", "1.40"))
+CONTINUATION_MIN_RR_TP2 = float(os.getenv("CONTINUATION_MIN_RR_TP2", "2.10"))
+CONTINUATION_BREAK_EVEN_R_MULT = float(os.getenv("CONTINUATION_BREAK_EVEN_R_MULT", "1.10"))
+CONTINUATION_TRAILING_START_R_MULT = float(os.getenv("CONTINUATION_TRAILING_START_R_MULT", "1.50"))
+REVERSAL_ENTRY_ZONE_MULT = float(os.getenv("REVERSAL_ENTRY_ZONE_MULT", "0.80"))
+REVERSAL_SL_MULT = float(os.getenv("REVERSAL_SL_MULT", "0.94"))
+REVERSAL_TP_MULT = float(os.getenv("REVERSAL_TP_MULT", "0.92"))
+REVERSAL_MIN_RR_TP1 = float(os.getenv("REVERSAL_MIN_RR_TP1", "1.15"))
+REVERSAL_MIN_RR_TP2 = float(os.getenv("REVERSAL_MIN_RR_TP2", "1.70"))
+REVERSAL_BREAK_EVEN_R_MULT = float(os.getenv("REVERSAL_BREAK_EVEN_R_MULT", "0.85"))
+REVERSAL_TRAILING_START_R_MULT = float(os.getenv("REVERSAL_TRAILING_START_R_MULT", "1.10"))
 
 NEWS_CACHE = {
     "latest": [],
@@ -517,6 +531,7 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
     trend_regime_score = float(decision_meta.get("trend_regime_score") or 0.0)
     session_bucket = str(decision_meta.get("session_bucket") or "UNKNOWN").upper()
     market_mode = str(decision_meta.get("market_mode") or "UNKNOWN").upper()
+    setup_type = str(decision_meta.get("setup_type") or "CONTINUATION").upper()
     conservative_factor = 1.0
     if trend_regime_score and trend_regime_score < 0.7:
         conservative_factor = 1.12
@@ -582,27 +597,52 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
         geometry_sl_mult *= TRENDING_SELL_EXTRA_SL_MULT
         geometry_tp_mult *= TRENDING_SELL_EXTRA_TP_MULT
 
+    setup_zone_mult = 1.0
+    setup_sl_mult = 1.0
+    setup_tp_mult = 1.0
+    min_tp1_rr = 1.35
+    min_tp2_rr = 1.9
+    setup_break_even_r_mult = BREAK_EVEN_R_MULT
+    setup_trailing_start_r_mult = TRAILING_START_R_MULT
+
+    if setup_type == "CONTINUATION":
+        setup_zone_mult = CONTINUATION_ENTRY_ZONE_MULT
+        setup_sl_mult = CONTINUATION_SL_MULT
+        setup_tp_mult = CONTINUATION_TP_MULT
+        min_tp1_rr = CONTINUATION_MIN_RR_TP1
+        min_tp2_rr = CONTINUATION_MIN_RR_TP2
+        setup_break_even_r_mult = CONTINUATION_BREAK_EVEN_R_MULT
+        setup_trailing_start_r_mult = CONTINUATION_TRAILING_START_R_MULT
+    elif setup_type == "REVERSAL":
+        setup_zone_mult = REVERSAL_ENTRY_ZONE_MULT
+        setup_sl_mult = REVERSAL_SL_MULT
+        setup_tp_mult = REVERSAL_TP_MULT
+        min_tp1_rr = REVERSAL_MIN_RR_TP1
+        min_tp2_rr = REVERSAL_MIN_RR_TP2
+        setup_break_even_r_mult = REVERSAL_BREAK_EVEN_R_MULT
+        setup_trailing_start_r_mult = REVERSAL_TRAILING_START_R_MULT
+
     if symbol == "XAUUSD":
         zone = _clamp(candle_range * XAU_ENTRY_ZONE_RANGE_MULT * session_zone_mult, XAU_ENTRY_ZONE_MIN, XAU_ENTRY_ZONE_MAX)
         if market_mode == "TRENDING":
             zone *= 0.92
         elif market_mode in {"CHOPPY", "TOXIC"}:
             zone *= 0.8
-        sl_offset = _clamp(max(XAU_SL_MIN, candle_range * XAU_SL_RANGE_MULT), XAU_SL_MIN, XAU_SL_MAX) * conservative_factor * geometry_sl_mult
-        tp1_offset = max(XAU_TP1_MIN, candle_range * XAU_TP1_RANGE_MULT) * geometry_tp_mult
-        tp2_offset = max(XAU_TP2_MIN, candle_range * XAU_TP2_RANGE_MULT) * geometry_tp_mult
+        zone *= setup_zone_mult
+        sl_offset = _clamp(max(XAU_SL_MIN, candle_range * XAU_SL_RANGE_MULT), XAU_SL_MIN, XAU_SL_MAX) * conservative_factor * geometry_sl_mult * setup_sl_mult
+        tp1_offset = max(XAU_TP1_MIN, candle_range * XAU_TP1_RANGE_MULT) * geometry_tp_mult * setup_tp_mult
+        tp2_offset = max(XAU_TP2_MIN, candle_range * XAU_TP2_RANGE_MULT) * geometry_tp_mult * setup_tp_mult
         digits = 2
         spread_max_points = 120
     else:
         zone = _clamp(candle_range * FOREX_ENTRY_ZONE_RANGE_MULT * session_zone_mult, FOREX_ENTRY_ZONE_MIN, FOREX_ENTRY_ZONE_MAX)
-        sl_offset = _clamp(max(FOREX_SL_MIN, candle_range * FOREX_SL_RANGE_MULT), FOREX_SL_MIN, FOREX_SL_MAX) * conservative_factor * geometry_sl_mult
-        tp1_offset = max(FOREX_TP1_MIN, candle_range * FOREX_TP1_RANGE_MULT) * geometry_tp_mult
-        tp2_offset = max(FOREX_TP2_MIN, candle_range * FOREX_TP2_RANGE_MULT) * geometry_tp_mult
+        zone *= setup_zone_mult
+        sl_offset = _clamp(max(FOREX_SL_MIN, candle_range * FOREX_SL_RANGE_MULT), FOREX_SL_MIN, FOREX_SL_MAX) * conservative_factor * geometry_sl_mult * setup_sl_mult
+        tp1_offset = max(FOREX_TP1_MIN, candle_range * FOREX_TP1_RANGE_MULT) * geometry_tp_mult * setup_tp_mult
+        tp2_offset = max(FOREX_TP2_MIN, candle_range * FOREX_TP2_RANGE_MULT) * geometry_tp_mult * setup_tp_mult
         digits = 5
         spread_max_points = 35
 
-    min_tp1_rr = 1.35
-    min_tp2_rr = 1.9
     tp1_offset = max(tp1_offset, sl_offset * min_tp1_rr)
     tp2_offset = max(tp2_offset, sl_offset * min_tp2_rr)
 
@@ -612,7 +652,7 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
     rr_tp1 = tp1_offset / sl_offset if sl_offset > 0 else None
     rr_tp2 = tp2_offset / sl_offset if sl_offset > 0 else None
 
-    trailing_start_r_mult = TRAILING_START_R_MULT
+    trailing_start_r_mult = setup_trailing_start_r_mult
     trailing_step_r_mult = TRAILING_STEP_R_MULT
     time_based_trailing_after_sec = TIME_BASED_TRAILING_AFTER_SEC
     time_based_trailing_min_r_mult = TIME_BASED_TRAILING_MIN_R_MULT
@@ -708,11 +748,18 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
             "reversal_confirmed": decision_meta.get("reversal_confirmed"),
             "continuation_confirmed": decision_meta.get("continuation_confirmed"),
             "trend_context": decision_meta.get("trend_context"),
+            "setup_geometry": {
+                "zone_mult": round(setup_zone_mult, 4),
+                "sl_mult": round(setup_sl_mult, 4),
+                "tp_mult": round(setup_tp_mult, 4),
+                "min_rr_tp1": round(min_tp1_rr, 4),
+                "min_rr_tp2": round(min_tp2_rr, 4),
+            },
             "trailing": {
                 "enabled": TRAILING_ENABLED,
                 "adaptive_enabled": ADAPTIVE_TRAILING_ENABLED,
                 "session_bucket": session_bucket,
-                "break_even_r_mult": BREAK_EVEN_R_MULT,
+                "break_even_r_mult": setup_break_even_r_mult,
                 "break_even_buffer_r_mult": BREAK_EVEN_BUFFER_R_MULT,
                 "trailing_start_r_mult": trailing_start_r_mult,
                 "trailing_step_r_mult": trailing_step_r_mult,
