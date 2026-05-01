@@ -1064,31 +1064,40 @@ def _classify_setup_type(pf: dict, trend_context: dict, quality_tier: dict) -> d
     exhaustion_flag = bool(trend_context.get("exhaustion_flag"))
     trend_strength = float(trend_context.get("trend_strength") or 0.0)
     alignment_count = int(trend_context.get("alignment_count") or 0)
+    opposing_count = int(trend_context.get("opposing_count") or 0)
+    late_ratio = float(trend_context.get("late_ratio") or 1.0)
+    body_ratio = float(trend_context.get("body_ratio") or 0.0)
 
-    if continuation_candidate and quality in {"A", "B"}:
+    continuation_hard_ok = continuation_candidate and quality in {"A", "B"} and trend_strength >= max(TREND_REGIME_SCORE_MIN, 0.62) and alignment_count >= max(TREND_REGIME_ALIGNMENT_MIN, 3) and late_ratio <= 0.55
+    reversal_hard_ok = reversal_candidate and quality == "A" and market_mode not in {"CHOPPY", "TOXIC"} and trend_strength <= 0.68 and opposing_count >= 1 and body_ratio >= max(MIN_STRUCTURE_BODY_RATIO, 0.30) and late_ratio <= 0.45
+
+    if continuation_hard_ok:
         return {
             "setup_type": "CONTINUATION",
-            "setup_reason": f"continuation_aligned:{bias}|trend={trend_strength:.2f}|align={alignment_count}",
+            "setup_reason": f"continuation_aligned:{bias}|trend={trend_strength:.2f}|align={alignment_count}|late={late_ratio:.2f}",
             "trend_aligned": True,
             "reversal_confirmed": False,
             "continuation_confirmed": True,
+            "policy_mode": "trend_follow_only",
         }
 
-    if reversal_candidate and quality == "A" and not exhaustion_flag and market_mode not in {"CHOPPY", "TOXIC"}:
+    if reversal_hard_ok and not exhaustion_flag:
         return {
             "setup_type": "REVERSAL",
-            "setup_reason": f"reversal_candidate:{bias}|trend={trend_strength:.2f}|align={alignment_count}",
+            "setup_reason": f"reversal_confirmed:{bias}|trend={trend_strength:.2f}|opp={opposing_count}|late={late_ratio:.2f}",
             "trend_aligned": False,
             "reversal_confirmed": True,
             "continuation_confirmed": False,
+            "policy_mode": "confirmed_reversal_only",
         }
 
     return {
         "setup_type": "NO_TRADE",
-        "setup_reason": f"setup_ambiguous:{bias}|trend={trend_strength:.2f}|mode={market_mode}|quality={quality}",
+        "setup_reason": f"setup_ambiguous:{bias}|trend={trend_strength:.2f}|mode={market_mode}|quality={quality}|late={late_ratio:.2f}",
         "trend_aligned": continuation_candidate,
         "reversal_confirmed": False,
         "continuation_confirmed": continuation_candidate,
+        "policy_mode": "hard_block_ambiguous",
     }
 
 
@@ -1160,6 +1169,7 @@ def decide_with_mock_gemini(snapshot: dict):
         "trend_aligned": setup_meta.get("trend_aligned"),
         "reversal_confirmed": setup_meta.get("reversal_confirmed"),
         "continuation_confirmed": setup_meta.get("continuation_confirmed"),
+        "policy_mode": setup_meta.get("policy_mode"),
     }
 
 
@@ -1351,6 +1361,7 @@ def decide_trade(snapshot: dict):
         gemini_result["trend_aligned"] = setup_meta.get("trend_aligned")
         gemini_result["reversal_confirmed"] = setup_meta.get("reversal_confirmed")
         gemini_result["continuation_confirmed"] = setup_meta.get("continuation_confirmed")
+        gemini_result["policy_mode"] = setup_meta.get("policy_mode")
         if gemini_result.get("decision") in {"BUY", "SELL"} and QUALITY_TIER_C_BLOCK_ENABLED and quality_tier.get("tier") == "C":
             return {
                 "decision": "NO_TRADE",
@@ -1404,6 +1415,7 @@ def decide_trade(snapshot: dict):
                 "trend_aligned": setup_meta.get("trend_aligned"),
                 "reversal_confirmed": setup_meta.get("reversal_confirmed"),
                 "continuation_confirmed": setup_meta.get("continuation_confirmed"),
+                "policy_mode": setup_meta.get("policy_mode"),
             }
         if gemini_result.get("decision") == fallback.get("decision"):
             gemini_result["deterministic_score"] = deterministic_score

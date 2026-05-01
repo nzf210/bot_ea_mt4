@@ -747,6 +747,7 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
             "trend_aligned": decision_meta.get("trend_aligned"),
             "reversal_confirmed": decision_meta.get("reversal_confirmed"),
             "continuation_confirmed": decision_meta.get("continuation_confirmed"),
+            "policy_mode": decision_meta.get("policy_mode"),
             "trend_context": decision_meta.get("trend_context"),
             "setup_geometry": {
                 "zone_mult": round(setup_zone_mult, 4),
@@ -778,6 +779,7 @@ def _build_signal(symbol: str, decision: str, entry: float, timeframe: str, conf
         "trend_aligned": decision_meta.get("trend_aligned"),
         "reversal_confirmed": decision_meta.get("reversal_confirmed"),
         "continuation_confirmed": decision_meta.get("continuation_confirmed"),
+        "policy_mode": decision_meta.get("policy_mode"),
         "trend_context": decision_meta.get("trend_context"),
         "received_at": datetime.now(timezone.utc).isoformat(),
         "status": "READY",
@@ -1072,6 +1074,7 @@ async def snapshot_worker_loop():
                         "trend_aligned": result.get("trend_aligned"),
                         "reversal_confirmed": result.get("reversal_confirmed"),
                         "continuation_confirmed": result.get("continuation_confirmed"),
+                        "policy_mode": result.get("policy_mode"),
                         "trend_context": result.get("trend_context"),
                     })
                     continue
@@ -1163,6 +1166,7 @@ async def snapshot_worker_loop():
                     "trend_aligned": result.get("trend_aligned"),
                     "reversal_confirmed": result.get("reversal_confirmed"),
                     "continuation_confirmed": result.get("continuation_confirmed"),
+                    "policy_mode": result.get("policy_mode"),
                     "trend_context": result.get("trend_context"),
                     "sl_distance": signal.get("market_context", {}).get("sl_distance"),
                     "tp1_distance": signal.get("market_context", {}).get("tp1_distance"),
