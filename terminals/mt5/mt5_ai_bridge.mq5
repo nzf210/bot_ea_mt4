@@ -495,19 +495,9 @@ void OnTick()
    CheckClosedPositionReport();
 }
 
-void OnTimer()
+bool ProcessLatestSignal(string json)
 {
-   lastPollAt = TimeCurrent();
-   ManageOpenPosition();
-   CheckClosedPositionReport();
-
-   if(!EnableTrading) return;
-   if(TimeCurrent() < cooldownUntil) return;
-   if(IsDailyLossLimitHit()) return;
-   if(CountCurrentPositions() > 0) return;
-
-   string json = HttpGetLatestSignal();
-   if(StringLen(json) < 20) return;
+   if(StringLen(json) < 20) return false;
 
    string signalId = JsonGetString(json, "signal_id");
    string symbol = JsonGetString(json, "symbol");
@@ -529,7 +519,7 @@ void OnTimer()
    int maxAge = (int)JsonGetDouble(json, "max_signal_age_sec");
    if(maxAge <= 0) maxAge = MaxSignalAgeSec;
 
-   if(signalId == "") return;
+   if(signalId == "") return false;
    datetime signalTs = ParseIsoTimestamp(timestampUtc);
    if(signalTs > 0)
    {
@@ -537,31 +527,31 @@ void OnTimer()
       if(signalAge < 0)
       {
          SendExecutionReject(signalId, symbol, side, "future_signal_timestamp", 0, 0, 0);
-         return;
+         return false;
       }
       if(signalAge > maxAge)
       {
          SendExecutionReject(signalId, symbol, side, "stale_signal", 0, 0, 0);
-         return;
+         return false;
       }
    }
    if(signalId == lastSignalId)
    {
       SendExecutionReject(signalId, symbol, side, "signal_already_processed", 0, 0, 0);
-      return;
+      return false;
    }
-   if(lastSignalTimestamp > 0 && signalTs > 0 && signalTs <= lastSignalTimestamp) return;
+   if(lastSignalTimestamp > 0 && signalTs > 0 && signalTs <= lastSignalTimestamp) return false;
    if(NormalizeBridgeSymbol(symbol) != NormalizeBridgeSymbol(_Symbol))
    {
       SendExecutionReject(signalId, symbol, side, "symbol_mismatch", 0, 0, 0);
-      return;
+      return false;
    }
 
    int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
    if(spread > MaxSpreadPoints)
    {
       SendExecutionReject(signalId, symbol, side, "spread_too_high", (side == "BUY") ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID), 0, 0);
-      return;
+      return false;
    }
 
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -570,14 +560,14 @@ void OnTimer()
    if(price < entryMin || price > entryMax)
    {
       SendExecutionReject(signalId, symbol, side, "price_outside_entry_zone", price, entryMin, entryMax);
-      return;
+      return false;
    }
 
    double zoneWidth = entryMax - entryMin;
    if(zoneWidth <= 0)
    {
       SendExecutionReject(signalId, symbol, side, "invalid_entry_zone_width", price, entryMin, entryMax);
-      return;
+      return false;
    }
 
    double zoneBuffer = zoneWidth * EntryZoneExecutionBufferRatio;
@@ -591,7 +581,7 @@ void OnTimer()
    if(price < effectiveMin || price > effectiveMax)
    {
       SendExecutionReject(signalId, symbol, side, "price_too_close_to_zone_edge", price, effectiveMin, effectiveMax);
-      return;
+      return false;
    }
 
    double edgeRatio = 0.5;
@@ -600,7 +590,7 @@ void OnTimer()
    if(edgeRatio <= ExtremeEntryBlockRatio)
    {
       SendExecutionReject(signalId, symbol, side, "extreme_edge_entry_blocked", price, entryMin, entryMax);
-      return;
+      return false;
    }
 
    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
@@ -608,7 +598,7 @@ void OnTimer()
    if(slPoints <= 0)
    {
       SendExecutionReject(signalId, symbol, side, "invalid_stop_loss_distance", price, entryMin, entryMax);
-      return;
+      return false;
    }
 
    int stopsLevelPoints = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
@@ -624,13 +614,13 @@ void OnTimer()
       {
          DebugPrint(StringFormat("broker stop guard blocked: sl_distance=%G min_required=%G stops_level=%d freeze_level=%d", slDistancePrice, minStopDistancePrice, stopsLevelPoints, freezeLevelPoints));
          SendExecutionReject(signalId, symbol, side, "stop_loss_too_close_for_broker", price, entryMin, entryMax);
-         return;
+         return false;
       }
       if(tp1 > 0 && tpDistancePrice < minStopDistancePrice)
       {
          DebugPrint(StringFormat("broker stop guard blocked: tp_distance=%G min_required=%G stops_level=%d freeze_level=%d", tpDistancePrice, minStopDistancePrice, stopsLevelPoints, freezeLevelPoints));
          SendExecutionReject(signalId, symbol, side, "take_profit_too_close_for_broker", price, entryMin, entryMax);
-         return;
+         return false;
       }
    }
 
@@ -638,7 +628,7 @@ void OnTimer()
    if(lot < SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
    {
       SendExecutionReject(signalId, symbol, side, "calculated_lot_below_minimum", price, entryMin, entryMax);
-      return;
+      return false;
    }
 
    bool ok = false;
@@ -670,26 +660,41 @@ void OnTimer()
       lastTimeBasedTrailingSlRMult = (timeBasedTrailingSlRMult >= 0) ? timeBasedTrailingSlRMult : TimeBasedTrailingSlRMultInput;
       SaveState();
       SendExecutionReport(signalId, "OPEN", lot, price);
+      return true;
    }
-   else
-   {
-      int retcode = (int)trade.ResultRetcode();
-      string retcodeDesc = trade.ResultRetcodeDescription();
-      string orderComment = trade.ResultComment();
-      DebugPrint(StringFormat(
-         "trade open failed retcode=%d desc=%s comment=%s side=%s lot=%G price=%G sl=%G tp=%G spread=%d stops_level=%d freeze_level=%d symbol=%s",
-         retcode,
-         retcodeDesc,
-         orderComment,
-         side,
-         lot,
-         price,
-         stopLoss,
-         tp1,
-         spread,
-         stopsLevelPoints,
-         freezeLevelPoints,
-         _Symbol
-      ));
-   }
+
+   int retcode = (int)trade.ResultRetcode();
+   string retcodeDesc = trade.ResultRetcodeDescription();
+   string orderComment = trade.ResultComment();
+   DebugPrint(StringFormat(
+      "trade open failed retcode=%d desc=%s comment=%s side=%s lot=%G price=%G sl=%G tp=%G spread=%d stops_level=%d freeze_level=%d symbol=%s",
+      retcode,
+      retcodeDesc,
+      orderComment,
+      side,
+      lot,
+      price,
+      stopLoss,
+      tp1,
+      spread,
+      stopsLevelPoints,
+      freezeLevelPoints,
+      _Symbol
+   ));
+   return false;
+}
+
+void OnTimer()
+{
+   lastPollAt = TimeCurrent();
+   ManageOpenPosition();
+   CheckClosedPositionReport();
+
+   if(!EnableTrading) return;
+   if(TimeCurrent() < cooldownUntil) return;
+   if(IsDailyLossLimitHit()) return;
+   if(CountCurrentPositions() > 0) return;
+
+   string json = HttpGetLatestSignal();
+   ProcessLatestSignal(json);
 }
