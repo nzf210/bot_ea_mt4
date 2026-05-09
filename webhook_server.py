@@ -429,33 +429,114 @@ async def _send_telegram_message(text: str):
 
 def _format_execution_notification(payload: dict, current_signal: Optional[dict] = None) -> Optional[str]:
     kind = str(payload.get("type") or "").upper()
-    signal = current_signal or {}
+    signal = current_signal if isinstance(current_signal, dict) else {}
     symbol = str(payload.get("symbol") or signal.get("symbol") or "?")
-    side = str(payload.get("side") or signal.get("side") or "?")
+    side = str(payload.get("side") or signal.get("side") or "?").upper()
     ticket = payload.get("ticket")
     price = payload.get("price")
 
+    # Extract detailed signal information
+    entry_zone = signal.get("entry_zone") if isinstance(signal.get("entry_zone"), dict) else None
+    stop_loss = signal.get("stop_loss")
+    take_profit_list = signal.get("take_profit") if isinstance(signal.get("take_profit"), list) else []
+    confidence = signal.get("confidence")
+    signal_id = signal.get("signal_id")
+    setup_type = str(signal.get("setup_type") or signal.get("market_context", {}).get("setup_type") or "NORMAL").upper()
+    session_bucket = str(signal.get("market_context", {}).get("session_bucket") or signal.get("session_bucket") or "UNKNOWN").upper()
+
+    # Calculate risk/reward for closed positions
+    rr_tp1 = None
+    if stop_loss is not None and entry_zone is not None:
+        entry_min = entry_zone.get("min")
+        entry_max = entry_zone.get("max")
+        if entry_min is not None and entry_max is not None:
+            entry_mid = (float(entry_min) + float(entry_max)) / 2
+            sl_distance = abs(entry_mid - float(stop_loss))
+            if sl_distance > 0 and take_profit_list:
+                tp1_price = take_profit_list[0].get("price") if take_profit_list else None
+                if tp1_price is not None:
+                    tp_distance = abs(float(tp1_price) - entry_mid)
+                    rr_tp1 = round(tp_distance / sl_distance, 2)
+
     if kind == "OPEN":
-        return "\n".join([
-            "🟢 OPEN POSITION",
-            f"Symbol: {symbol}",
-            f"Side: {side}",
-            f"Ticket: {ticket}",
-            f"Price: {price}",
-        ])
+        lines = [
+            "🟢 ═══ OPEN POSITION ═══",
+            f"📊 Symbol: {symbol}",
+            f"📈 Side: {side}",
+            f"🔢 Ticket: {ticket}",
+            f"💰 Price: {price}",
+        ]
+
+        if entry_zone:
+            entry_min = entry_zone.get("min")
+            entry_max = entry_zone.get("max")
+            if entry_min is not None and entry_max is not None:
+                lines.append(f"📍 Entry Zone: {entry_min} - {entry_max}")
+
+        if stop_loss is not None:
+            lines.append(f"🛡️ Stop Loss: {stop_loss}")
+
+        if take_profit_list:
+            for tp in take_profit_list[:2]:
+                if tp.get("price"):
+                    label = tp.get("label", "TP")
+                    lines.append(f"🎯 {label}: {tp.get('price')}")
+
+        if confidence is not None:
+            lines.append(f"📊 Confidence: {float(confidence):.2%}")
+
+        if signal_id:
+            lines.append(f"🔖 Signal: {signal_id[:20]}...")
+
+        lines.append(f"📋 Setup: {setup_type} | {session_bucket}")
+
+        return "\n".join(lines)
+
     if kind in {"CLOSE", "CLOSED", "EXIT"}:
         outcome = str(payload.get("outcome") or payload.get("result") or "").upper()
         pnl = payload.get("pnl")
-        exit_reason = payload.get("exit_reason")
-        return "\n".join([
-            "🔴 CLOSED POSITION",
-            f"Symbol: {symbol}",
-            f"Side: {side}",
-            f"Ticket: {ticket}",
-            f"Outcome: {outcome}",
-            f"PNL: {pnl}",
-            f"Exit: {exit_reason}",
-        ])
+        exit_reason = str(payload.get("exit_reason") or "UNKNOWN").upper()
+
+        # Emoji based on outcome
+        if outcome in {"WIN", "TP", "TAKE_PROFIT", "POSITIVE"}:
+            outcome_emoji = "✅"
+        elif outcome in {"LOSS", "SL", "STOP_LOSS", "NEGATIVE"}:
+            outcome_emoji = "❌"
+        elif outcome in {"BREAKEVEN", "BE"}:
+            outcome_emoji = "⚖️"
+        else:
+            outcome_emoji = "📋"
+
+        lines = [
+            f"{outcome_emoji} ═══ CLOSED POSITION ═══",
+            f"📊 Symbol: {symbol}",
+            f"📈 Side: {side}",
+            f"🔢 Ticket: {ticket}",
+            f"📋 Outcome: {outcome}",
+            f"💵 PNL: {pnl}",
+            f"🚪 Exit: {exit_reason}",
+        ]
+
+        if rr_tp1 is not None:
+            lines.append(f"📐 RR TP1: {rr_tp1:.2f}R")
+
+        if stop_loss is not None:
+            lines.append(f"🛡️ SL Hit: {stop_loss}")
+
+        if take_profit_list:
+            tp_hit = None
+            for tp in take_profit_list:
+                if tp.get("price"):
+                    label = tp.get("label", "TP")
+                    lines.append(f"🎯 {label}: {tp.get('price')}")
+
+        if signal_id:
+            lines.append(f"🔖 Signal: {signal_id[:20]}...")
+
+        lines.append(f"📋 Setup: {setup_type} | {session_bucket}")
+
+        return "\n".join(lines)
+
     return None
 
 
