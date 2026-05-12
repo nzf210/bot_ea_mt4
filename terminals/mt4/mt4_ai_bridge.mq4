@@ -1,6 +1,6 @@
 #property strict
 
-extern string BridgeBaseUrl = "http://127.0.0.1:8000";
+extern string BridgeBaseUrl = "http://127.0.0.1:80";
 extern string BridgeToken = "change-me-token";
 extern double RiskPercent = 0.5;
 extern double MaxDailyLossPercent = 2.0;

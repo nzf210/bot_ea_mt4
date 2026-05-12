@@ -1,8 +1,8 @@
 #property strict
 #include <Trade/Trade.mqh>
 
-input string BridgeBaseUrl = "http://127.0.0.1:8000";
-input string BridgeToken = "change-me-token";
+input string BridgeBaseUrl = "http://127.0.0.1:80";
+input string BridgeToken = "khjgbrikhbdgtehf";
 input double RiskPercent = 0.5;
 input double MaxDailyLossPercent = 2.0;
 input int MaxSpreadPoints = 120;

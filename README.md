@@ -34,13 +34,13 @@ DEFAULT_NEWS_BLOCK_MINUTES=30
 ### Run server
 ```bash
 cd xau_mt4_bridge
-uvicorn webhook_server:app --host 0.0.0.0 --port 8000
+uvicorn webhook_server:app --host 0.0.0.0 --port 80
 ```
 
 ## 2. Publish sinyal ke webhook
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/signal" \
+curl -X POST "http://127.0.0.1:80/signal" \
   -H "Authorization: Bearer ganti-token-aman" \
   -H "Content-Type: application/json" \
   --data @signal_example.json
@@ -48,7 +48,7 @@ curl -X POST "http://127.0.0.1:8000/signal" \
 
 Cek sinyal terakhir:
 ```bash
-curl "http://127.0.0.1:8000/signal/latest" \
+curl "http://127.0.0.1:80/signal/latest" \
   -H "Authorization: Bearer ganti-token-aman"
 ```
 
@@ -59,12 +59,12 @@ curl "http://127.0.0.1:8000/signal/latest" \
 2. Restart MT4 atau refresh Navigator
 3. Attach EA ke chart `XAUUSD`
 4. Isi input:
-   - `BridgeBaseUrl` = `http://IP_SERVER:8000`
+   - `BridgeBaseUrl` = `http://IP_SERVER:80`
    - `BridgeToken` = token yang sama dari file `.env`
    - pastikan token di EA sama persis dengan `BRIDGE_API_TOKEN`
 5. Tambahkan URL ke MT4:
    - `Tools > Options > Expert Advisors > Allow WebRequest for listed URL`
-   - tambahkan `http://IP_SERVER:8000`
+   - tambahkan `http://IP_SERVER:80`
 
 ## 4. Cara kerja
 

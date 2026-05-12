@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import os
 import uuid
@@ -105,6 +105,8 @@ FOREX_TP2_MIN = float(os.getenv("FOREX_TP2_MIN", "0.0075"))
 FOREX_TP2_RANGE_MULT = float(os.getenv("FOREX_TP2_RANGE_MULT", "5.8"))
 NEWS_URL = os.getenv("NEWS_CALENDAR_URL", "https://nfs.faireconomy.media/ff_calendar_thisweek.json")
 NEWS_REFRESH_SEC = int(os.getenv("NEWS_REFRESH_SEC", "3600"))
+NEWS_HTTP_TIMEOUT_SEC = float(os.getenv("NEWS_HTTP_TIMEOUT_SEC", "10"))
+NEWS_RATE_LIMIT_BACKOFF_SEC = int(os.getenv("NEWS_RATE_LIMIT_BACKOFF_SEC", "21600"))
 DEFAULT_NEWS_BLOCK_MINUTES = int(os.getenv("DEFAULT_NEWS_BLOCK_MINUTES", "30"))
 TRAILING_ENABLED = os.getenv("TRAILING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 BREAK_EVEN_R_MULT = float(os.getenv("BREAK_EVEN_R_MULT", "0.85"))
@@ -193,6 +195,12 @@ REVERSAL_TRAILING_START_R_MULT = float(os.getenv("REVERSAL_TRAILING_START_R_MULT
 NEWS_CACHE = {
     "latest": [],
     "updated_at": None,
+    "last_attempt_at": None,
+    "last_success_at": None,
+    "last_error": None,
+    "last_status_code": None,
+    "cooldown_until": None,
+    "cache_source": None,
 }
 AI4TRADE_STATE = {
     "last_fetch_at": None,
@@ -348,6 +356,49 @@ def _load_news_cache_from_file():
     if isinstance(data, dict):
         NEWS_CACHE["latest"] = data.get("latest", [])
         NEWS_CACHE["updated_at"] = data.get("updated_at")
+        NEWS_CACHE["last_success_at"] = data.get("last_success_at") or data.get("updated_at")
+        NEWS_CACHE["cache_source"] = "file"
+
+
+def _merge_news_cache_from_file(cache_source: str):
+    metadata = {
+        "last_attempt_at": NEWS_CACHE.get("last_attempt_at"),
+        "last_success_at": NEWS_CACHE.get("last_success_at"),
+        "last_error": NEWS_CACHE.get("last_error"),
+        "last_status_code": NEWS_CACHE.get("last_status_code"),
+        "cooldown_until": NEWS_CACHE.get("cooldown_until"),
+    }
+    _load_news_cache_from_file()
+    for key, value in metadata.items():
+        if value is not None:
+            NEWS_CACHE[key] = value
+    NEWS_CACHE["cache_source"] = cache_source
+
+
+def _parse_http_retry_after(value: Optional[str]) -> Optional[int]:
+    if not value:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        return max(0, int(raw))
+    try:
+        retry_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        delta_sec = int((retry_at - datetime.now(timezone.utc)).total_seconds())
+        return max(0, delta_sec)
+    except Exception:
+        return None
+
+
+def _news_cooldown_active() -> bool:
+    cooldown_until = NEWS_CACHE.get("cooldown_until")
+    if not cooldown_until:
+        return False
+    try:
+        return datetime.now(timezone.utc) < datetime.fromisoformat(cooldown_until.replace("Z", "+00:00"))
+    except Exception:
+        return False
 
 
 def _save_ai4trade_raw(payload):
@@ -417,12 +468,25 @@ def _store_generated_signal(payload: dict):
 
 async def _send_telegram_message(text: str):
     if not TELEGRAM_NOTIFY_ENABLED or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print(
+            "Telegram notify skipped: "
+            f"enabled={TELEGRAM_NOTIFY_ENABLED} "
+            f"token_present={bool(TELEGRAM_BOT_TOKEN)} "
+            f"chat_id_present={bool(TELEGRAM_CHAT_ID)}"
+        )
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(url, json=payload)
+            response = await client.post(url, json=payload)
+            if response.status_code >= 400:
+                print(
+                    "Telegram notify failed: "
+                    f"status={response.status_code} "
+                    f"body={response.text[:500]}"
+                )
+                return
     except Exception as e:
         print(f"Telegram notify error: {e}")
 
@@ -1001,9 +1065,14 @@ def convert_ai4trade_signal(signals: list):
 
 
 async def refresh_news_cache():
+    now = datetime.now(timezone.utc)
+    NEWS_CACHE["last_attempt_at"] = now.isoformat()
+    if _news_cooldown_active():
+        _merge_news_cache_from_file("file_cooldown")
+        return
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(NEWS_URL, timeout=10)
+            response = await client.get(NEWS_URL, timeout=NEWS_HTTP_TIMEOUT_SEC)
             response.raise_for_status()
             news_data = response.json()
             usd_high = [
@@ -1011,11 +1080,30 @@ async def refresh_news_cache():
                 if n.get("country") == "USD" and n.get("impact") == "High"
             ]
             NEWS_CACHE["latest"] = usd_high
-            NEWS_CACHE["updated_at"] = datetime.now(timezone.utc).isoformat()
+            refreshed_at = datetime.now(timezone.utc).isoformat()
+            NEWS_CACHE["updated_at"] = refreshed_at
+            NEWS_CACHE["last_success_at"] = refreshed_at
+            NEWS_CACHE["last_error"] = None
+            NEWS_CACHE["last_status_code"] = response.status_code
+            NEWS_CACHE["cooldown_until"] = None
+            NEWS_CACHE["cache_source"] = "remote"
             _save_news_cache_to_file()
-    except Exception as e:
+    except httpx.HTTPStatusError as e:
+        status_code = e.response.status_code if e.response is not None else None
+        NEWS_CACHE["last_status_code"] = status_code
+        NEWS_CACHE["last_error"] = str(e)
+        if status_code == 429:
+            retry_after_sec = _parse_http_retry_after(e.response.headers.get("Retry-After") if e.response is not None else None)
+            if retry_after_sec is None:
+                retry_after_sec = NEWS_RATE_LIMIT_BACKOFF_SEC
+            cooldown_until = datetime.now(timezone.utc) + timedelta(seconds=max(1, retry_after_sec))
+            NEWS_CACHE["cooldown_until"] = cooldown_until.isoformat()
         print(f"Error fetching news: {e}")
-        _load_news_cache_from_file()
+        _merge_news_cache_from_file("file_error")
+    except Exception as e:
+        NEWS_CACHE["last_error"] = str(e)
+        print(f"Error fetching news: {e}")
+        _merge_news_cache_from_file("file_error")
 
 
 async def update_news_loop():
@@ -1516,6 +1604,13 @@ def _news_summary(block_minutes: int = DEFAULT_NEWS_BLOCK_MINUTES):
         "blocked": active_news is not None,
         "active": active_news,
         "updated_at": NEWS_CACHE.get("updated_at"),
+        "last_success_at": NEWS_CACHE.get("last_success_at"),
+        "last_attempt_at": NEWS_CACHE.get("last_attempt_at"),
+        "last_status_code": NEWS_CACHE.get("last_status_code"),
+        "last_error": NEWS_CACHE.get("last_error"),
+        "cooldown_until": NEWS_CACHE.get("cooldown_until"),
+        "cooldown_active": _news_cooldown_active(),
+        "cache_source": NEWS_CACHE.get("cache_source"),
     }
 
 
@@ -1777,6 +1872,7 @@ def _run_startup_checks():
     checks.append({"name": "bridge_token_safe", "ok": strong_token, "detail": "BRIDGE_API_TOKEN must be set and not default"})
     news_ready = bool(NEWS_CACHE.get("updated_at") or os.path.exists(NEWS_CACHE_FILE))
     checks.append({"name": "news_source_or_cache_ready", "ok": news_ready, "detail": NEWS_CACHE.get("updated_at") or NEWS_CACHE_FILE})
+    checks.append({"name": "news_rate_limit_cooldown", "ok": True, "detail": NEWS_CACHE.get("cooldown_until") or "inactive"})
     signal_dir = os.path.dirname(SIGNAL_STORE) or BASE_DIR
     journal_dir = os.path.dirname(JOURNAL_STORE) or BASE_DIR
     snapshot_dir = os.path.dirname(SNAPSHOT_STORE) or BASE_DIR
@@ -1916,6 +2012,8 @@ async def receive_snapshot(batch: SnapshotBatch, authorization: Optional[str] = 
         item = snap.model_dump()
         item["symbol"] = symbol
         item["raw_symbol"] = raw_symbol
+        if not item.get("timestamp_utc"):
+            item["timestamp_utc"] = batch.timestamp_utc
         item["runtime_state"] = {
             "last_loss_side": SNAPSHOT_STATE.get("last_loss_side"),
             "last_loss_at": SNAPSHOT_STATE.get("last_loss_at"),
@@ -2001,6 +2099,13 @@ def news_status(authorization: Optional[str] = Header(default=None)):
         "active_news": summary.get("active"),
         "news_updated_at": summary.get("updated_at"),
         "cached_events": len(NEWS_CACHE.get("latest", [])),
+        "last_success_at": summary.get("last_success_at"),
+        "last_attempt_at": summary.get("last_attempt_at"),
+        "last_status_code": summary.get("last_status_code"),
+        "last_error": summary.get("last_error"),
+        "cooldown_until": summary.get("cooldown_until"),
+        "cooldown_active": summary.get("cooldown_active"),
+        "cache_source": summary.get("cache_source"),
     }
 
 

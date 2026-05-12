@@ -1,6 +1,6 @@
 #property strict
 
-input string ReceiverUrl = "http://127.0.0.1:8000/market/snapshot";
+input string ReceiverUrl = "http://127.0.0.1:8010/market/snapshot";
 input string ReceiverToken = "change-me-token";
 input bool EnableSender = true;
 

@@ -1,5 +1,9 @@
 import json
 import os
+import re
+import shutil
+import subprocess
+import time
 import httpx
 from dotenv import load_dotenv
 
@@ -12,8 +16,18 @@ SYMBOL_ALIASES = {
 }
 GEMINI_ENABLED = os.getenv("GEMINI_DECIDER_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 GEMINI_MODEL = os.getenv("GEMINI_DECIDER_MODEL", "gemini-2.5-flash")
+GEMINI_FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "").split(",") if m.strip()]
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_API_URL = os.getenv("GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta/models")
+GEMINI_BACKEND_MODE = os.getenv("GEMINI_BACKEND_MODE", "api_then_cli").strip().lower()
+GEMINI_CLI_FALLBACK_ENABLED = os.getenv("GEMINI_CLI_FALLBACK_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+GEMINI_CLI_COMMAND = os.getenv("GEMINI_CLI_COMMAND", "gemini.cmd" if os.name == "nt" else "gemini").strip()
+GEMINI_CLI_MODEL = os.getenv("GEMINI_CLI_MODEL", "").strip()
+GEMINI_CLI_TIMEOUT_SEC = float(os.getenv("GEMINI_CLI_TIMEOUT_SEC", "90"))
+GEMINI_TIMEOUT_SEC = float(os.getenv("GEMINI_TIMEOUT_SEC", "45"))
+GEMINI_RETRY_ATTEMPTS = max(1, int(os.getenv("GEMINI_RETRY_ATTEMPTS", "3")))
+GEMINI_RETRY_BACKOFF_SEC = max(0.0, float(os.getenv("GEMINI_RETRY_BACKOFF_SEC", "1.2")))
+GEMINI_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 XAU_MAX_SPREAD = int(os.getenv("XAU_MAX_SPREAD_POINTS", "120"))
 FOREX_MAX_SPREAD = int(os.getenv("FOREX_MAX_SPREAD_POINTS", "35"))
 MIN_CONFIDENCE = float(os.getenv("GEMINI_MIN_CONFIDENCE", "0.55"))
@@ -96,6 +110,7 @@ GEMINI_RUNTIME_STATE = {
     "api_configured": bool(GEMINI_API_KEY),
     "binary_found": False,
     "binary_path": None,
+    "backend_mode": GEMINI_BACKEND_MODE,
     "last_error": None,
     "last_return_code": None,
     "last_http_status": None,
@@ -1140,6 +1155,10 @@ def decide_with_mock_gemini(snapshot: dict):
         "market_toxicity_score": pf.get("market_toxicity_score"),
         "market_toxicity_penalty": pf.get("market_toxicity_penalty"),
         "market_toxicity_reason": pf.get("market_toxicity_reason"),
+        "market_mode": pf.get("market_mode"),
+        "market_mode_reason": pf.get("market_mode_reason"),
+        "market_mode_threshold_bonus": pf.get("market_mode_threshold_bonus"),
+        "market_mode_confidence_penalty": pf.get("market_mode_confidence_penalty"),
         "pattern_lockout_penalty": pf.get("pattern_lockout_penalty"),
         "pattern_lockout_reason": pf.get("pattern_lockout_reason"),
         "pattern_lockout_count": pf.get("pattern_lockout_count"),
@@ -1201,10 +1220,9 @@ def _gemini_prompt(snapshot: dict, pf: dict) -> str:
 
 def get_gemini_runtime_state():
     GEMINI_RUNTIME_STATE["enabled"] = GEMINI_ENABLED
-    GEMINI_RUNTIME_STATE["model"] = GEMINI_MODEL
+    GEMINI_RUNTIME_STATE["model"] = GEMINI_RUNTIME_STATE.get("model") or GEMINI_MODEL
     GEMINI_RUNTIME_STATE["api_configured"] = bool(GEMINI_API_KEY)
-    GEMINI_RUNTIME_STATE["binary_found"] = False
-    GEMINI_RUNTIME_STATE["binary_path"] = None
+    GEMINI_RUNTIME_STATE["backend_mode"] = GEMINI_BACKEND_MODE
     state = dict(GEMINI_RUNTIME_STATE)
     state["last_mode"] = state.get("last_decision_source")
     return state
@@ -1213,7 +1231,7 @@ def get_gemini_runtime_state():
 def set_gemini_runtime_state(payload: dict):
     if not isinstance(payload, dict):
         return
-    for key in ["enabled", "model", "binary_found", "binary_path", "last_error", "last_return_code", "last_decision_source"]:
+    for key in ["enabled", "model", "binary_found", "binary_path", "backend_mode", "last_error", "last_return_code", "last_http_status", "last_decision_source"]:
         if key in payload:
             GEMINI_RUNTIME_STATE[key] = payload.get(key)
 
@@ -1223,21 +1241,236 @@ def _debug(message: str):
         print(f"[gemini_decider] {message}")
 
 
+def _parse_gemini_json(raw: str):
+    text = (raw or "").strip()
+    if not text:
+        raise ValueError("gemini_empty_output")
+
+    candidates = [text]
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        candidates.append(fence_match.group(1).strip())
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidates.append(text[start:end + 1].strip())
+
+    seen = set()
+    last_error = None
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            return json.loads(candidate)
+        except Exception as exc:
+            last_error = exc
+
+    raise last_error or ValueError("gemini_invalid_json")
+
+
+def _gemini_model_candidates():
+    candidates = []
+    for model in [GEMINI_MODEL, *GEMINI_FALLBACK_MODELS]:
+        if model and model not in candidates:
+            candidates.append(model)
+    return candidates
+
+
+def _gemini_cli_model_candidates():
+    candidates = []
+    for model in [GEMINI_CLI_MODEL, GEMINI_MODEL, *GEMINI_FALLBACK_MODELS]:
+        if model and model not in candidates:
+            candidates.append(model)
+    return candidates
+
+
+def _find_gemini_cli_binary():
+    command = GEMINI_CLI_COMMAND
+    if not command:
+        return None
+    if os.path.isabs(command) and os.path.exists(command):
+        return command
+    resolved = shutil.which(command)
+    if resolved:
+        return resolved
+    if os.name == "nt" and "." not in os.path.basename(command):
+        for suffix in [".cmd", ".exe", ".bat", ".ps1"]:
+            resolved = shutil.which(f"{command}{suffix}")
+            if resolved:
+                return resolved
+    return None
+
+
+def _resolve_gemini_cli_launcher():
+    binary_path = _find_gemini_cli_binary()
+    if not binary_path:
+        return None, None
+
+    lower_path = binary_path.lower()
+    if lower_path.endswith(".cmd") or lower_path.endswith(".bat"):
+        launcher_dir = os.path.dirname(binary_path)
+        local_node = os.path.join(launcher_dir, "node.exe")
+        node_binary = local_node if os.path.exists(local_node) else (shutil.which("node") or shutil.which("node.exe"))
+        bundle_path = os.path.join(launcher_dir, "node_modules", "@google", "gemini-cli", "bundle", "gemini.js")
+        if node_binary and os.path.exists(bundle_path):
+            return node_binary, bundle_path
+
+    return binary_path, None
+
+
+def _finalize_gemini_result(parsed: dict, snapshot: dict, pf: dict, decision_source: str, active_model: str):
+    decision = str(parsed.get("decision", "NO_TRADE")).upper()
+    confidence = float(parsed.get("confidence", 0.0))
+    if decision not in {"BUY", "SELL", "NO_TRADE"}:
+        GEMINI_RUNTIME_STATE["last_error"] = f"gemini_invalid_decision:{decision}"
+        GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
+        _debug(f"Gemini returned invalid decision={decision}, using fallback")
+        return None
+
+    symbol = normalize_symbol(parsed.get("symbol") or snapshot["symbol"])
+    timeframe = parsed.get("timeframe") or snapshot.get("timeframe", "M1")
+    entry = parsed.get("entry", pf.get("entry"))
+    if entry is not None:
+        entry = float(entry)
+    reason = str(parsed.get("reason") or "gemini_decision")
+    evaluation = parsed.get("evaluation") if isinstance(parsed.get("evaluation"), dict) else {}
+
+    if decision in {"BUY", "SELL"} and confidence < MIN_CONFIDENCE:
+        _debug(f"Gemini low confidence decision={decision} confidence={confidence}")
+        return {
+            "decision": "NO_TRADE",
+            "confidence": confidence,
+            "reason": f"gemini_low_confidence:{reason}",
+            "entry": entry,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "decision_source": decision_source,
+            "model": active_model,
+        }
+
+    GEMINI_RUNTIME_STATE["last_error"] = None
+    GEMINI_RUNTIME_STATE["last_decision_source"] = decision_source
+    GEMINI_RUNTIME_STATE["model"] = active_model
+    GEMINI_RUNTIME_STATE["last_return_code"] = 0
+    _debug(
+        f"Gemini decision used source={decision_source} model={active_model} "
+        f"decision={decision} confidence={confidence} reason={reason}"
+    )
+    result_payload = {
+        "decision": decision,
+        "confidence": confidence,
+        "reason": reason,
+        "entry": entry,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "decision_source": decision_source,
+        "model": active_model,
+    }
+    if evaluation:
+        result_payload["evaluation"] = {
+            key: max(0.0, min(float(value), 1.0))
+            for key, value in evaluation.items()
+            if key in {"trend_alignment", "entry_quality", "exhaustion_risk", "noise_risk"}
+        }
+    return result_payload
+
+
+def _try_decide_with_gemini_cli(snapshot: dict, pf: dict, prompt: str):
+    if not GEMINI_CLI_FALLBACK_ENABLED:
+        return None
+
+    binary_path = _find_gemini_cli_binary()
+    launch_binary, launch_script = _resolve_gemini_cli_launcher()
+    GEMINI_RUNTIME_STATE["binary_found"] = bool(launch_binary)
+    GEMINI_RUNTIME_STATE["binary_path"] = launch_script or launch_binary or binary_path
+    if not launch_binary:
+        GEMINI_RUNTIME_STATE["last_error"] = "gemini_cli_binary_missing"
+        _debug("Gemini CLI binary missing, using fallback")
+        return None
+
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    cli_models = _gemini_cli_model_candidates() or [GEMINI_MODEL]
+    for model_name in cli_models:
+        cmd = [launch_binary]
+        if launch_script:
+            cmd.append(launch_script)
+        cmd.extend(["-p", prompt, "--output-format", "json"])
+        if model_name:
+            cmd.extend(["-m", model_name])
+        env = os.environ.copy()
+        env["GEMINI_CLI_NO_RELAUNCH"] = "true"
+        try:
+            completed = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=GEMINI_CLI_TIMEOUT_SEC,
+                cwd=BASE_DIR,
+                stdin=subprocess.DEVNULL,
+                creationflags=creation_flags,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            GEMINI_RUNTIME_STATE["last_return_code"] = None
+            GEMINI_RUNTIME_STATE["last_error"] = f"gemini_cli_timeout:{GEMINI_CLI_TIMEOUT_SEC}"
+            _debug(f"Gemini CLI timeout model={model_name}, using fallback")
+            continue
+        except Exception as exc:
+            GEMINI_RUNTIME_STATE["last_return_code"] = None
+            GEMINI_RUNTIME_STATE["last_error"] = f"gemini_cli_exception:{exc}"
+            _debug(f"Gemini CLI exception model={model_name} err={exc}, using fallback")
+            continue
+
+        GEMINI_RUNTIME_STATE["last_http_status"] = None
+        GEMINI_RUNTIME_STATE["last_return_code"] = completed.returncode
+        GEMINI_RUNTIME_STATE["model"] = model_name
+        if completed.returncode != 0:
+            error_text = (completed.stderr or completed.stdout or "").strip()[:300]
+            GEMINI_RUNTIME_STATE["last_error"] = error_text or f"gemini_cli_exit:{completed.returncode}"
+            _debug(
+                f"Gemini CLI failed model={model_name} launcher={launch_binary} "
+                f"script={launch_script or '<direct>'} exit={completed.returncode} "
+                f"body={error_text or '<empty>'}"
+            )
+            continue
+
+        raw = (completed.stdout or "").strip()
+        if not raw:
+            GEMINI_RUNTIME_STATE["last_error"] = "gemini_cli_empty_output"
+            _debug(f"Gemini CLI returned empty output model={model_name}, using fallback")
+            continue
+
+        try:
+            parsed = _parse_gemini_json(raw)
+        except Exception as exc:
+            GEMINI_RUNTIME_STATE["last_error"] = f"gemini_cli_parse_error:{exc}"
+            _debug(f"Gemini CLI parse error model={model_name} err={exc}, using fallback")
+            continue
+
+        return _finalize_gemini_result(parsed, snapshot, pf, "gemini_cli", model_name)
+
+    GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
+    return None
+
+
 def _try_decide_with_gemini(snapshot: dict, pf: dict):
     if not GEMINI_ENABLED:
         _debug("Gemini disabled by config, using fallback")
         return None
     GEMINI_RUNTIME_STATE["api_configured"] = bool(GEMINI_API_KEY)
-    GEMINI_RUNTIME_STATE["binary_found"] = False
-    GEMINI_RUNTIME_STATE["binary_path"] = None
+    prompt = _gemini_prompt(snapshot, pf)
+    GEMINI_RUNTIME_STATE["backend_mode"] = GEMINI_BACKEND_MODE
+
+    if GEMINI_BACKEND_MODE == "cli_only":
+        return _try_decide_with_gemini_cli(snapshot, pf, prompt)
+
     if not GEMINI_API_KEY:
         GEMINI_RUNTIME_STATE["last_error"] = "gemini_api_key_missing"
-        GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
-        _debug("Gemini API key missing, using fallback")
-        return None
+        _debug("Gemini API key missing, trying CLI fallback")
+        return _try_decide_with_gemini_cli(snapshot, pf, prompt)
 
-    prompt = _gemini_prompt(snapshot, pf)
-    endpoint = f"{GEMINI_API_URL}/{GEMINI_MODEL}:generateContent"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -1249,15 +1482,43 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
         },
     }
     try:
-        with httpx.Client(timeout=45.0) as client:
-            response = client.post(endpoint, params={"key": GEMINI_API_KEY}, json=payload)
-        GEMINI_RUNTIME_STATE["last_http_status"] = response.status_code
-        GEMINI_RUNTIME_STATE["last_return_code"] = 0 if response.is_success else response.status_code
-        if not response.is_success:
-            GEMINI_RUNTIME_STATE["last_error"] = response.text[:300]
-            GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
-            _debug(f"Gemini API failed status={response.status_code}, body={response.text[:300]}")
-            return None
+        models = _gemini_model_candidates()
+        response = None
+        active_model = GEMINI_MODEL
+        with httpx.Client(timeout=GEMINI_TIMEOUT_SEC) as client:
+            for model_idx, model_name in enumerate(models):
+                endpoint = f"{GEMINI_API_URL}/{model_name}:generateContent"
+                active_model = model_name
+                for attempt in range(1, GEMINI_RETRY_ATTEMPTS + 1):
+                    response = client.post(endpoint, params={"key": GEMINI_API_KEY}, json=payload)
+                    GEMINI_RUNTIME_STATE["model"] = model_name
+                    GEMINI_RUNTIME_STATE["last_http_status"] = response.status_code
+                    GEMINI_RUNTIME_STATE["last_return_code"] = 0 if response.is_success else response.status_code
+                    if response.is_success:
+                        break
+
+                    body_snippet = response.text[:300]
+                    GEMINI_RUNTIME_STATE["last_error"] = body_snippet
+                    retryable = response.status_code in GEMINI_RETRYABLE_STATUS_CODES
+                    has_next_attempt = attempt < GEMINI_RETRY_ATTEMPTS
+                    has_next_model = model_idx < len(models) - 1
+                    _debug(
+                        f"Gemini API failed model={model_name} attempt={attempt}/{GEMINI_RETRY_ATTEMPTS} "
+                        f"status={response.status_code}, body={body_snippet}"
+                    )
+                    if retryable and has_next_attempt:
+                        time.sleep(GEMINI_RETRY_BACKOFF_SEC * attempt)
+                        continue
+                    if retryable and has_next_model:
+                        break
+                    _debug("Gemini API exhausted without success, trying CLI fallback")
+                    return _try_decide_with_gemini_cli(snapshot, pf, prompt)
+
+                if response is not None and response.is_success:
+                    break
+            else:
+                _debug("Gemini API models exhausted, trying CLI fallback")
+                return _try_decide_with_gemini_cli(snapshot, pf, prompt)
 
         data = response.json()
         candidates = data.get("candidates") or []
@@ -1269,59 +1530,19 @@ def _try_decide_with_gemini(snapshot: dict, pf: dict):
         raw = raw.strip()
         if not raw:
             GEMINI_RUNTIME_STATE["last_error"] = "gemini_empty_output"
-            GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
-            _debug("Gemini returned empty output, using fallback")
-            return None
+            _debug("Gemini returned empty output, trying CLI fallback")
+            return _try_decide_with_gemini_cli(snapshot, pf, prompt)
 
-        parsed = json.loads(raw)
-        decision = str(parsed.get("decision", "NO_TRADE")).upper()
-        confidence = float(parsed.get("confidence", 0.0))
-        if decision not in {"BUY", "SELL", "NO_TRADE"}:
-            GEMINI_RUNTIME_STATE["last_error"] = f"gemini_invalid_decision:{decision}"
-            GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
-            _debug(f"Gemini returned invalid decision={decision}, using fallback")
-            return None
-        symbol = normalize_symbol(parsed.get("symbol") or snapshot["symbol"])
-        timeframe = parsed.get("timeframe") or snapshot.get("timeframe", "M1")
-        entry = parsed.get("entry", pf.get("entry"))
-        if entry is not None:
-            entry = float(entry)
-        reason = str(parsed.get("reason") or "gemini_decision")
-        evaluation = parsed.get("evaluation") if isinstance(parsed.get("evaluation"), dict) else {}
-        if decision in {"BUY", "SELL"} and confidence < MIN_CONFIDENCE:
-            _debug(f"Gemini low confidence decision={decision} confidence={confidence}")
-            return {
-                "decision": "NO_TRADE",
-                "confidence": confidence,
-                "reason": f"gemini_low_confidence:{reason}",
-                "entry": entry,
-                "symbol": symbol,
-                "timeframe": timeframe,
-            }
-        GEMINI_RUNTIME_STATE["last_error"] = None
-        GEMINI_RUNTIME_STATE["last_decision_source"] = "gemini"
-        _debug(f"Gemini decision used decision={decision} confidence={confidence} reason={reason}")
-        result_payload = {
-            "decision": decision,
-            "confidence": confidence,
-            "reason": reason,
-            "entry": entry,
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "decision_source": "gemini",
-        }
-        if evaluation:
-            result_payload["evaluation"] = {
-                key: max(0.0, min(float(value), 1.0))
-                for key, value in evaluation.items()
-                if key in {"trend_alignment", "entry_quality", "exhaustion_risk", "noise_risk"}
-            }
-        return result_payload
+        parsed = _parse_gemini_json(raw)
+        result = _finalize_gemini_result(parsed, snapshot, pf, "gemini", active_model)
+        if result is None:
+            _debug("Gemini API output rejected, trying CLI fallback")
+            return _try_decide_with_gemini_cli(snapshot, pf, prompt)
+        return result
     except Exception as e:
         GEMINI_RUNTIME_STATE["last_error"] = str(e)
-        GEMINI_RUNTIME_STATE["last_decision_source"] = "fallback"
-        _debug(f"Gemini exception {e}, using fallback")
-        return None
+        _debug(f"Gemini exception {e}, trying CLI fallback")
+        return _try_decide_with_gemini_cli(snapshot, pf, prompt)
 
 
 def decide_trade(snapshot: dict):
@@ -1376,6 +1597,10 @@ def decide_trade(snapshot: dict):
                 "fusion_score": fusion_score,
                 "adaptive_trade_threshold": adaptive_trade_threshold,
                 "adaptive_no_trade_threshold": adaptive_no_trade_threshold,
+                "market_mode": fallback.get("market_mode"),
+                "market_mode_reason": fallback.get("market_mode_reason"),
+                "market_mode_threshold_bonus": fallback.get("market_mode_threshold_bonus"),
+                "market_mode_confidence_penalty": fallback.get("market_mode_confidence_penalty"),
                 "trend_regime_reason": fallback.get("trend_regime_reason"),
                 "trend_regime_score": fallback.get("trend_regime_score"),
                 "trend_regime_alignment": fallback.get("trend_regime_alignment"),
@@ -1400,6 +1625,10 @@ def decide_trade(snapshot: dict):
                 "fusion_score": fusion_score,
                 "adaptive_trade_threshold": adaptive_trade_threshold,
                 "adaptive_no_trade_threshold": adaptive_no_trade_threshold,
+                "market_mode": fallback.get("market_mode"),
+                "market_mode_reason": fallback.get("market_mode_reason"),
+                "market_mode_threshold_bonus": fallback.get("market_mode_threshold_bonus"),
+                "market_mode_confidence_penalty": fallback.get("market_mode_confidence_penalty"),
                 "trend_regime_reason": fallback.get("trend_regime_reason"),
                 "trend_regime_score": fallback.get("trend_regime_score"),
                 "trend_regime_alignment": fallback.get("trend_regime_alignment"),
@@ -1435,6 +1664,10 @@ def decide_trade(snapshot: dict):
                     "fusion_score": fusion_score,
                     "adaptive_trade_threshold": adaptive_trade_threshold,
                     "adaptive_no_trade_threshold": adaptive_no_trade_threshold,
+                    "market_mode": fallback.get("market_mode"),
+                    "market_mode_reason": fallback.get("market_mode_reason"),
+                    "market_mode_threshold_bonus": fallback.get("market_mode_threshold_bonus"),
+                    "market_mode_confidence_penalty": fallback.get("market_mode_confidence_penalty"),
                     "trend_regime_reason": fallback.get("trend_regime_reason"),
                     "trend_regime_score": fallback.get("trend_regime_score"),
                     "trend_regime_alignment": fallback.get("trend_regime_alignment"),
@@ -1449,6 +1682,10 @@ def decide_trade(snapshot: dict):
             gemini_result["fusion_score"] = fusion_score
             gemini_result["adaptive_trade_threshold"] = adaptive_trade_threshold
             gemini_result["adaptive_no_trade_threshold"] = adaptive_no_trade_threshold
+            gemini_result["market_mode"] = fallback.get("market_mode")
+            gemini_result["market_mode_reason"] = fallback.get("market_mode_reason")
+            gemini_result["market_mode_threshold_bonus"] = fallback.get("market_mode_threshold_bonus")
+            gemini_result["market_mode_confidence_penalty"] = fallback.get("market_mode_confidence_penalty")
             gemini_result["trend_regime_reason"] = fallback.get("trend_regime_reason")
             gemini_result["trend_regime_score"] = fallback.get("trend_regime_score")
             gemini_result["trend_regime_alignment"] = fallback.get("trend_regime_alignment")
@@ -1464,6 +1701,10 @@ def decide_trade(snapshot: dict):
             gemini_result["fusion_score"] = fusion_score
             gemini_result["adaptive_trade_threshold"] = adaptive_trade_threshold
             gemini_result["adaptive_no_trade_threshold"] = adaptive_no_trade_threshold
+            gemini_result["market_mode"] = fallback.get("market_mode")
+            gemini_result["market_mode_reason"] = fallback.get("market_mode_reason")
+            gemini_result["market_mode_threshold_bonus"] = fallback.get("market_mode_threshold_bonus")
+            gemini_result["market_mode_confidence_penalty"] = fallback.get("market_mode_confidence_penalty")
             gemini_result["trend_regime_reason"] = fallback.get("trend_regime_reason")
             gemini_result["trend_regime_score"] = fallback.get("trend_regime_score")
             gemini_result["trend_regime_alignment"] = fallback.get("trend_regime_alignment")

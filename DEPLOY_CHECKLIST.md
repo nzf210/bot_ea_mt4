@@ -31,30 +31,30 @@ Pastikan precheck lolos.
 ## 5. Verifikasi bridge
 Cek health umum:
 ```powershell
-curl http://127.0.0.1:8000/
+curl http://127.0.0.1:80/
 ```
 
 Cek readiness:
 ```powershell
-curl http://127.0.0.1:8000/health/ready -H "Authorization: Bearer TOKEN_KAMU"
+curl http://127.0.0.1:80/health/ready -H "Authorization: Bearer TOKEN_KAMU"
 ```
 
 Cek news filter:
 ```powershell
-curl http://127.0.0.1:8000/news/status -H "Authorization: Bearer TOKEN_KAMU"
+curl http://127.0.0.1:80/news/status -H "Authorization: Bearer TOKEN_KAMU"
 ```
 
 ## 6. Setup MT4
 Di MT4:
 - attach `mt4_ai_bridge` ke chart `XAUUSD`
-- isi `BridgeBaseUrl = http://IP_RDP:8000`
+- isi `BridgeBaseUrl = http://IP_RDP:80`
 - isi `BridgeToken = TOKEN_KAMU`
 - pastikan token sama persis dengan `.env`
 
 Aktifkan WebRequest:
 - `Tools > Options > Expert Advisors`
 - centang `Allow WebRequest for listed URL`
-- tambahkan `http://IP_RDP:8000`
+- tambahkan `http://IP_RDP:80`
 
 ## 7. Compile EA
 - buka `mt4_ai_bridge.mq4` di MetaEditor
@@ -64,12 +64,12 @@ Aktifkan WebRequest:
 ## 8. Uji end-to-end
 Kirim sample signal:
 ```powershell
-curl -X POST "http://127.0.0.1:8000/signal" -H "Authorization: Bearer TOKEN_KAMU" -H "Content-Type: application/json" --data @signal_example.json
+curl -X POST "http://127.0.0.1:80/signal" -H "Authorization: Bearer TOKEN_KAMU" -H "Content-Type: application/json" --data @signal_example.json
 ```
 
 Cek latest signal:
 ```powershell
-curl http://127.0.0.1:8000/signal/latest -H "Authorization: Bearer TOKEN_KAMU"
+curl http://127.0.0.1:80/signal/latest -H "Authorization: Bearer TOKEN_KAMU"
 ```
 
 Pantau:
@@ -78,7 +78,7 @@ Pantau:
 - status news block
 
 ## 9. Hardening production
-- gunakan Windows Firewall, batasi akses ke port 8000
+- gunakan Windows Firewall, batasi akses ke port 80
 - kalau bisa, allow hanya IP tertentu
 - jangan expose token di chat/log publik
 - simpan backup `.env` secara aman
