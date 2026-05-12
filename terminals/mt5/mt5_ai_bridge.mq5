@@ -52,6 +52,14 @@ bool lastTrailingActivated = false;
 double dayStartEquity = 0;
 datetime cooldownUntil = 0;
 
+string TrimTrailingSlash(string value)
+{
+   string normalized = value;
+   while(StringLen(normalized) > 0 && StringSubstr(normalized, StringLen(normalized) - 1, 1) == "/")
+      normalized = StringSubstr(normalized, 0, StringLen(normalized) - 1);
+   return normalized;
+}
+
 string NormalizeBridgeSymbol(string symbol)
 {
    string normalized = symbol;
@@ -261,7 +269,7 @@ double JsonGetDouble(string json, string key)
 
 string HttpGetLatestSignal()
 {
-   string url = BridgeBaseUrl + "/signal/latest";
+   string url = TrimTrailingSlash(BridgeBaseUrl) + "/signal/latest";
    string headers = "Authorization: Bearer " + BridgeToken + "\r\n";
    char data[];
    char result[];
@@ -269,10 +277,16 @@ string HttpGetLatestSignal()
    int code = WebRequest("GET", url, headers, 5000, data, result, resultHeaders);
    if(code == -1)
    {
-      Print("WebRequest failed: ", GetLastError());
+      int err = GetLastError();
+      Print("Signal fetch WebRequest failed err=", err, " url=", url);
       return "";
    }
    string response = CharArrayToString(result);
+   if(code < 200 || code >= 300)
+   {
+      DebugPrint("signal fetch failed code=" + IntegerToString(code) + " body=" + response);
+      return "";
+   }
    if(DebugLogging)
    {
       bool shouldLog = true;
@@ -313,7 +327,7 @@ string FlattenSignalResponse(string response)
 
 void SendExecutionReport(string signalId, string type, double lot, double price, string outcome = "", double pnl = 0.0, string exitReason = "")
 {
-   string url = BridgeBaseUrl + "/execution/report";
+   string url = TrimTrailingSlash(BridgeBaseUrl) + "/execution/report";
    string headers = "Authorization: Bearer " + BridgeToken + "\r\nContent-Type: application/json\r\n";
    string body = StringFormat(
       "{\"signal_id\":\"%s\",\"ticket\":%I64u,\"type\":\"%s\",\"lot\":%G,\"price\":%G,\"outcome\":\"%s\",\"pnl\":%G,\"exit_reason\":\"%s\",\"initial_risk_price\":%G,\"initial_stop_loss\":%G,\"initial_tp1\":%G,\"last_applied_stop_loss\":%G,\"break_even_activated\":%s,\"trailing_activated\":%s,\"terminal\":{\"platform\":\"mt5\",\"symbol_raw\":\"%s\"}}",
@@ -326,13 +340,24 @@ void SendExecutionReport(string signalId, string type, double lot, double price,
    string resultHeaders;
    StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
    int code = WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+   string response = CharArrayToString(result);
+   if(code == -1)
+   {
+      int err = GetLastError();
+      DebugPrint("execution report WebRequest failed err=" + IntegerToString(err) + " url=" + url + " body=" + body);
+      return;
+   }
    if(code < 200 || code >= 300)
-      DebugPrint("execution report failed code=" + IntegerToString(code));
+   {
+      DebugPrint("execution report failed code=" + IntegerToString(code) + " response=" + response + " request=" + body);
+      return;
+   }
+   DebugPrint("execution report sent code=" + IntegerToString(code) + " type=" + type + " signal_id=" + signalId);
 }
 
 void SendExecutionReject(string signalId, string symbol, string side, string reason, double price, double entryMin, double entryMax)
 {
-   string url = BridgeBaseUrl + "/execution/reject";
+   string url = TrimTrailingSlash(BridgeBaseUrl) + "/execution/reject";
    string headers = "Authorization: Bearer " + BridgeToken + "\r\nContent-Type: application/json\r\n";
    string body = StringFormat(
       "{\"signal_id\":\"%s\",\"symbol\":\"%s\",\"side\":\"%s\",\"reason\":\"%s\",\"price\":%G,\"entry_zone_min\":%G,\"entry_zone_max\":%G,\"terminal\":{\"platform\":\"mt5\",\"symbol_raw\":\"%s\"}}",
@@ -343,8 +368,18 @@ void SendExecutionReject(string signalId, string symbol, string side, string rea
    string resultHeaders;
    StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
    int code = WebRequest("POST", url, headers, 5000, data, result, resultHeaders);
+   string response = CharArrayToString(result);
+   if(code == -1)
+   {
+      int err = GetLastError();
+      DebugPrint("execution reject WebRequest failed err=" + IntegerToString(err) + " url=" + url + " body=" + body);
+      return;
+   }
    if(code < 200 || code >= 300)
-      DebugPrint("execution reject failed code=" + IntegerToString(code));
+   {
+      DebugPrint("execution reject failed code=" + IntegerToString(code) + " response=" + response + " request=" + body);
+      return;
+   }
 }
 
 bool SelectManagedPosition()
@@ -480,6 +515,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(SlippagePoints);
    RestoreState();
+   DebugPrint("MT5 bridge init base_url=" + TrimTrailingSlash(BridgeBaseUrl) + " token_len=" + IntegerToString(StringLen(BridgeToken)) + " symbol=" + _Symbol + " magic=" + IntegerToString((int)MagicNumber));
    EventSetTimer(PollIntervalSeconds > 0 ? PollIntervalSeconds : 3);
    return(INIT_SUCCEEDED);
 }

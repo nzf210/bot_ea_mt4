@@ -468,6 +468,15 @@ def _store_generated_signal(payload: dict):
 
 async def _send_telegram_message(text: str):
     if not TELEGRAM_NOTIFY_ENABLED or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        SNAPSHOT_STATE["last_telegram_notify_at"] = datetime.now(timezone.utc).isoformat()
+        SNAPSHOT_STATE["last_telegram_notify_ok"] = False
+        SNAPSHOT_STATE["last_telegram_notify_error"] = (
+            "skipped:"
+            f"enabled={TELEGRAM_NOTIFY_ENABLED},"
+            f"token_present={bool(TELEGRAM_BOT_TOKEN)},"
+            f"chat_id_present={bool(TELEGRAM_CHAT_ID)}"
+        )
+        _save_runtime_state()
         print(
             "Telegram notify skipped: "
             f"enabled={TELEGRAM_NOTIFY_ENABLED} "
@@ -481,13 +490,27 @@ async def _send_telegram_message(text: str):
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json=payload)
             if response.status_code >= 400:
+                SNAPSHOT_STATE["last_telegram_notify_at"] = datetime.now(timezone.utc).isoformat()
+                SNAPSHOT_STATE["last_telegram_notify_ok"] = False
+                SNAPSHOT_STATE["last_telegram_notify_error"] = (
+                    f"http_{response.status_code}:{response.text[:500]}"
+                )
+                _save_runtime_state()
                 print(
                     "Telegram notify failed: "
                     f"status={response.status_code} "
                     f"body={response.text[:500]}"
                 )
                 return
+            SNAPSHOT_STATE["last_telegram_notify_at"] = datetime.now(timezone.utc).isoformat()
+            SNAPSHOT_STATE["last_telegram_notify_ok"] = True
+            SNAPSHOT_STATE["last_telegram_notify_error"] = ""
+            _save_runtime_state()
     except Exception as e:
+        SNAPSHOT_STATE["last_telegram_notify_at"] = datetime.now(timezone.utc).isoformat()
+        SNAPSHOT_STATE["last_telegram_notify_ok"] = False
+        SNAPSHOT_STATE["last_telegram_notify_error"] = str(e)
+        _save_runtime_state()
         print(f"Telegram notify error: {e}")
 
 
@@ -2296,6 +2319,10 @@ async def notify_test(payload: Optional[dict] = None, authorization: Optional[st
 def execution_report(payload: dict, authorization: Optional[str] = Header(default=None)):
     _check_token(authorization)
     payload = upgrade_execution_report_payload(payload)
+    SNAPSHOT_STATE["last_execution_report_received_at"] = datetime.now(timezone.utc).isoformat()
+    SNAPSHOT_STATE["last_execution_report_received_type"] = payload.get("type")
+    SNAPSHOT_STATE["last_execution_report_received_signal_id"] = payload.get("signal_id")
+    SNAPSHOT_STATE["last_execution_report_received_ticket"] = payload.get("ticket")
     current_signal = _load_current_signal()
     event, current_signal = apply_execution_report(
         snapshot_state=SNAPSHOT_STATE,
@@ -2312,6 +2339,7 @@ def execution_report(payload: dict, authorization: Optional[str] = Header(defaul
         slippage_cooldown_sec=SLIPPAGE_COOLDOWN_SEC,
     )
     _append_journal(event)
+    _save_runtime_state()
 
     notify_text = _format_execution_notification(payload, current_signal if isinstance(current_signal, dict) else None)
     if notify_text:
